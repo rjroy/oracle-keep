@@ -488,6 +488,8 @@ export default function Chat({ cwd }: { cwd: string }) {
   const [widgets, setWidgets] = useState<Map<string, string[]>>(new Map());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const convoScrollRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Streaming state — refs avoid stale closures without triggering re-renders.
@@ -531,9 +533,19 @@ export default function Chat({ cwd }: { cwd: string }) {
       .catch(() => {/* widgets stay empty — non-fatal */});
   }, []);
 
-  // Scroll to bottom when messages change.
+  // Track whether the user is pinned to the bottom of the conversation.
+  const handleConvoScroll = useCallback(() => {
+    const el = convoScrollRef.current;
+    if (!el) return;
+    isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  }, []);
+
+  // Scroll to bottom when messages change, only if pinned.
+  // Use instant scroll — smooth animation queued repeatedly during streaming causes jitter.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!isAtBottomRef.current) return;
+    const el = convoScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   const resizeTextarea = useCallback(() => {
@@ -876,7 +888,7 @@ export default function Chat({ cwd }: { cwd: string }) {
             </div>
           )}
 
-          <div className="convo-scroll">
+          <div className="convo-scroll" ref={convoScrollRef} onScroll={handleConvoScroll}>
             <div className="convo">
               {showWelcome && <EmptyState cwd={cwd} />}
 

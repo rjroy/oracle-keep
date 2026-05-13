@@ -140,7 +140,7 @@ describe("createWebUIContext — getWidgetSnapshot", () => {
 
   test("returns rendered output for component-factory widget", () => {
     const { ctx } = makeContext();
-    ctx.setWidget("w", (_tui, _theme) => ({ render: () => ["rendered"] }));
+    ctx.setWidget("w", (_tui, _theme) => mockComponent(["rendered"]));
     expect(ctx.getWidgetSnapshot()).toEqual({ w: ["rendered"] });
   });
 
