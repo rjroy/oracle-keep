@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import type { SessionListItem, SessionRecord } from "@/types/session";
+import { MenuIcon, PanelLeftIcon } from "@/components/icons";
 
 const POLL_INTERVAL_MS = 10_000;
 
@@ -10,6 +11,7 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const activeSessionId = pathname?.match(/^\/s\/([^/]+)/)?.[1] ?? undefined;
+  const [collapsed, setCollapsed] = useState(true);
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -173,10 +175,19 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
   }
 
   return (
-    <nav className="rail" aria-label="Sessions">
-      <div className="rail-eyebrow">Sessions</div>
+    <nav className={`rail${collapsed ? " collapsed" : ""}`} aria-label="Sessions">
+      <div className="rail-toggle-wrap">
+        <button
+          className="icon-btn"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <MenuIcon size={18} /> : <PanelLeftIcon size={18} />}
+        </button>
+      </div>
+      {!collapsed && <div className="rail-eyebrow">Sessions</div>}
 
-      <div className="rail-scroll">
+      {!collapsed && <div className="rail-scroll">
         {sessions.length === 0 && (
           <p
             style={{
@@ -316,7 +327,7 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
             </span>
           </div>
         ))}
-      </div>
+      </div>}
 
       <div
         className="rail-foot"
