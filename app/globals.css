@@ -1288,6 +1288,9 @@ pre code { background: transparent; border: 0; color: inherit; padding: 0; }
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 12px;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
 }
 .widget-line {
   font-size: 12px;
@@ -1295,4 +1298,5 @@ pre code { background: transparent; border: 0; color: inherit; padding: 0; }
   color: var(--fg-2);
   line-height: 1.6;
   white-space: pre;
+  min-width: max-content;
 }
