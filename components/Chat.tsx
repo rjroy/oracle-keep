@@ -9,13 +9,40 @@ import {
 } from "react";
 import { marked } from "marked";
 import type { HistoryItem } from "@/types/chat";
+import {
+  MenuIcon,
+  PanelLeftIcon,
+  SunIcon,
+  MoonIcon,
+  SendIcon,
+  ScrollIcon,
+  LanternIcon,
+  ChevIcon,
+  Flourish,
+} from "@/components/icons";
 
-marked.use({ breaks: true, gfm: true });
+// Configure marked with language annotation for code blocks.
+const renderer = new marked.Renderer();
+renderer.code = ({
+  text,
+  lang,
+}: {
+  text: string;
+  lang?: string;
+  escaped?: boolean;
+}) => {
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<pre data-lang="${lang ?? ""}"><code>${escaped}</code></pre>`;
+};
+marked.use({ breaks: true, gfm: true, renderer });
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type ToolEntry = {
-  id: string;       // toolCallId — unique even when the same tool runs twice
+  id: string;
   name: string;
   label: string;
   output: string;
@@ -47,6 +74,7 @@ type Action =
   | { type: "ADD_ERROR"; id: string; text: string };
 
 // ── Reducer ────────────────────────────────────────────────────────────────────
+// Logic is unchanged from original — only the UI layer changed.
 
 function reducer(state: Message[], action: Action): Message[] {
   switch (action.type) {
@@ -57,7 +85,10 @@ function reducer(state: Message[], action: Action): Message[] {
       return [...state, { id: action.id, kind: "user", text: action.text }];
 
     case "ADD_ASSISTANT":
-      return [...state, { id: action.id, kind: "assistant", text: "", streaming: true }];
+      return [
+        ...state,
+        { id: action.id, kind: "assistant", text: "", streaming: true },
+      ];
 
     case "APPEND_TEXT":
       return state.map((m) =>
@@ -126,7 +157,9 @@ function reducer(state: Message[], action: Action): Message[] {
 
     case "FINALIZE_COMPACTION":
       return state.map((m) =>
-        m.id === action.id && m.kind === "compaction" ? { ...m, done: true } : m
+        m.id === action.id && m.kind === "compaction"
+          ? { ...m, done: true }
+          : m
       );
 
     case "REMOVE":
@@ -146,9 +179,22 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
-function renderMarkdown(text: string): string {
-  const result = marked.parse(text);
-  return typeof result === "string" ? result : "";
+/**
+ * Render markdown to HTML. When streaming=true, injects a `.streaming-caret`
+ * span before the final closing tag so the caret appears inline with the text.
+ */
+function renderMarkdown(text: string, streaming = false): string {
+  let html = marked.parse(text);
+  if (typeof html !== "string") return "";
+  if (streaming) {
+    html = html
+      .trimEnd()
+      .replace(
+        /<\/([^>]+)>$/,
+        '<span class="streaming-caret">▍</span></$1>'
+      );
+  }
+  return html;
 }
 
 function historyToMessages(items: HistoryItem[]): Message[] {
@@ -161,7 +207,12 @@ function historyToMessages(items: HistoryItem[]): Message[] {
       messages.push({ id: uid(), kind: "user", text: item.text });
     } else if (item.type === "assistant_text") {
       currentGroup = null;
-      messages.push({ id: uid(), kind: "assistant", text: item.text, streaming: false });
+      messages.push({
+        id: uid(),
+        kind: "assistant",
+        text: item.text,
+        streaming: false,
+      });
     } else if (item.type === "tool") {
       if (!currentGroup) {
         currentGroup = { id: uid(), kind: "tool_group", tools: [] };
@@ -183,23 +234,29 @@ function historyToMessages(items: HistoryItem[]): Message[] {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function UserBubble({ text }: { text: string }) {
+function UserMessage({ text }: { text: string }) {
   return (
-    <div className="msg user">
-      <div className="avatar">👤</div>
-      <div className="bubble">
-        {text.split("\n").map((line, i, arr) => (
-          <span key={i}>
-            {line}
-            {i < arr.length - 1 && <br />}
-          </span>
-        ))}
+    <div className="msg">
+      <div className="msg-avatar user">Y</div>
+      <div className="msg-body">
+        <div className="msg-head">
+          <span className="msg-name">You</span>
+          <span className="msg-role">you</span>
+        </div>
+        <div className="prose">
+          {text.split("\n").map((line, i, arr) => (
+            <span key={i}>
+              {line}
+              {i < arr.length - 1 && <br />}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
-function AssistantBubble({
+function AssistantMessage({
   text,
   streaming,
 }: {
@@ -207,12 +264,94 @@ function AssistantBubble({
   streaming: boolean;
 }) {
   return (
-    <div className="msg assistant">
-      <div className="avatar">⬡</div>
-      <div className="bubble">
-        <span dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
-        {streaming && <span className="cursor" />}
+    <div className="msg">
+      <div className="msg-avatar oracle">O</div>
+      <div className="msg-body">
+        <div className="msg-head">
+          <span className="msg-name">The Oracle</span>
+          <span className="msg-role">pi agent</span>
+        </div>
+        <div
+          className="prose"
+          dangerouslySetInnerHTML={{
+            __html: renderMarkdown(text, streaming),
+          }}
+        />
+        {!streaming && text && (
+          <div className="msg-actions">
+            <button
+              className="msg-action"
+              onClick={() => navigator.clipboard.writeText(text)}
+            >
+              Copy
+            </button>
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function ToolCard({
+  tool,
+  onToggle,
+}: {
+  tool: ToolEntry;
+  onToggle: () => void;
+}) {
+  const isActive = tool.status === "running";
+  const isOpen = tool.expanded;
+  const statusClass =
+    tool.status === "running"
+      ? "pending"
+      : tool.status === "ok"
+        ? "done"
+        : "error";
+  const statusLabel =
+    tool.status === "running"
+      ? "in progress"
+      : tool.status === "ok"
+        ? "returned"
+        : "failed";
+
+  return (
+    <div
+      className={`tool-card ${isOpen ? "is-open" : ""} ${isActive ? "is-active" : ""}`}
+    >
+      <div
+        className="tool-card-head"
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && onToggle()}
+      >
+        <div className="tool-icon-wrap">⚙</div>
+        <div className="tool-card-body-wrap">
+          <div className="tool-card-name">{tool.label}</div>
+          <div className="tool-card-sub">
+            {isActive
+              ? "working…"
+              : tool.output
+                ? tool.output.slice(0, 80)
+                : "no output"}
+          </div>
+        </div>
+        <span className={`tool-card-status ${statusClass}`}>{statusLabel}</span>
+        <ChevIcon size={14} className="tool-card-chev" />
+      </div>
+
+      {isOpen && (
+        <div className="tool-card-body">
+          {isActive ? (
+            <div className="shimmer" />
+          ) : tool.output ? (
+            <>
+              <div className="tool-section-title">Output</div>
+              <div className="tool-output">{tool.output}</div>
+            </>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -227,47 +366,66 @@ function ToolGroup({
   return (
     <div className="tool-group">
       {message.tools.map((tool) => (
-        <div key={tool.id} className="tool-call">
-          <div className="tool-header" onClick={() => onToggle(tool.id)}>
-            <span className="tool-icon">
-              {tool.status === "running" ? "🔧" : tool.status === "ok" ? "✅" : "❌"}
-            </span>
-            <span className="tool-name">{tool.label}</span>
-            <span className={`tool-status ${tool.status}`}>
-              {tool.status === "running"
-                ? "running…"
-                : tool.status === "ok"
-                  ? "✓ done"
-                  : "✗ error"}
-            </span>
-            <span className={`tool-toggle ${tool.expanded ? "open" : ""}`}>▶</span>
-          </div>
-          {tool.expanded && (
-            <div className="tool-output">{tool.output}</div>
-          )}
-        </div>
+        <ToolCard key={tool.id} tool={tool} onToggle={() => onToggle(tool.id)} />
       ))}
     </div>
   );
 }
 
-function CompactionBanner({ done }: { done: boolean }) {
+function CompactionMarker({ done }: { done: boolean }) {
+  if (!done) {
+    return (
+      <div className="compaction-banner">
+        <div className="compaction-spinner" />
+        The archivist is condensing…
+      </div>
+    );
+  }
+
   return (
-    <div className={`compaction-banner${done ? " resolved" : ""}`}>
-      {done ? (
-        "✓ Context compacted"
-      ) : (
-        <>
-          <div className="compaction-spinner" />
-          Compacting context…
-        </>
-      )}
+    <div>
+      <div className="archive-mark">
+        <ScrollIcon size={14} className="scroll-icon" />
+        <span>The archivist condensed</span>
+      </div>
+      <div className="archive-card">
+        <div className="archive-card-head">
+          <ScrollIcon size={12} />
+          Context archive
+        </div>
+        <p className="archive-card-summary">
+          Older messages were condensed to free up the context window. The
+          conversation continues from here.
+        </p>
+      </div>
     </div>
   );
 }
 
-function ErrorBanner({ text }: { text: string }) {
-  return <div className="error-banner">⚠ {text}</div>;
+function EmptyState({ cwd }: { cwd: string }) {
+  return (
+    <div className="empty">
+      <img
+        className="empty-shield empty-shield--light"
+        src="/logo-shield-light.png"
+        alt=""
+        width={72}
+        height={72}
+      />
+      <img
+        className="empty-shield empty-shield--dark"
+        src="/logo-shield-dark.png"
+        alt=""
+        width={72}
+        height={72}
+      />
+      <h2 className="empty-title">A new page.</h2>
+      <p className="empty-lede">
+        The Oracle is ready. Ask anything — the agent can read, write, and run
+        commands in <code>{cwd}</code>.
+      </p>
+    </div>
+  );
 }
 
 // ── Chat ───────────────────────────────────────────────────────────────────────
@@ -277,6 +435,9 @@ export default function Chat({ cwd }: { cwd: string }) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(true);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [showResumeBanner, setShowResumeBanner] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -287,13 +448,22 @@ export default function Chat({ cwd }: { cwd: string }) {
   const currentToolCallId = useRef<string | null>(null);
   const currentCompactionId = useRef<string | null>(null);
 
+  // Sync theme to <html> element so CSS variables apply globally.
+  const toggleTheme = useCallback(() => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+  }, [theme]);
+
   // Load history on mount.
   useEffect(() => {
     fetch("/api/history")
       .then((r) => r.json())
       .then(({ items }: { items: HistoryItem[] }) => {
         if (items?.length > 0) {
-          dispatch({ type: "HISTORY_LOADED", messages: historyToMessages(items) });
+          const msgs = historyToMessages(items);
+          dispatch({ type: "HISTORY_LOADED", messages: msgs });
+          setShowResumeBanner(true);
         }
         setHistoryLoaded(true);
       })
@@ -318,6 +488,7 @@ export default function Chat({ cwd }: { cwd: string }) {
 
     setInput("");
     setBusy(true);
+    setShowResumeBanner(false);
     requestAnimationFrame(resizeTextarea);
 
     // Reset streaming state.
@@ -337,7 +508,11 @@ export default function Chat({ cwd }: { cwd: string }) {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
-        dispatch({ type: "ADD_ERROR", id: uid(), text: err.error ?? "Request failed" });
+        dispatch({
+          type: "ADD_ERROR",
+          id: uid(),
+          text: err.error ?? "Request failed",
+        });
         return;
       }
 
@@ -367,7 +542,7 @@ export default function Chat({ cwd }: { cwd: string }) {
               if (!currentAssistantId.current) {
                 const id = uid();
                 currentAssistantId.current = id;
-                currentToolGroupId.current = null; // next tool after text → new group
+                currentToolGroupId.current = null;
                 dispatch({ type: "ADD_ASSISTANT", id });
               }
               dispatch({
@@ -378,7 +553,7 @@ export default function Chat({ cwd }: { cwd: string }) {
               break;
             }
             case "tool_start": {
-              currentAssistantId.current = null; // next text after tools → new bubble
+              currentAssistantId.current = null;
               if (!currentToolGroupId.current) {
                 const id = uid();
                 currentToolGroupId.current = id;
@@ -432,6 +607,7 @@ export default function Chat({ cwd }: { cwd: string }) {
               if (currentCompactionId.current) {
                 const id = currentCompactionId.current;
                 dispatch({ type: "FINALIZE_COMPACTION", id });
+                // Remove the banner after 3 seconds — the archive marker replaces it.
                 setTimeout(() => dispatch({ type: "REMOVE", id }), 3000);
                 currentCompactionId.current = null;
               }
@@ -439,12 +615,19 @@ export default function Chat({ cwd }: { cwd: string }) {
             }
             case "done": {
               if (currentAssistantId.current) {
-                dispatch({ type: "FINALIZE_ASSISTANT", id: currentAssistantId.current });
+                dispatch({
+                  type: "FINALIZE_ASSISTANT",
+                  id: currentAssistantId.current,
+                });
               }
               break;
             }
             case "error": {
-              dispatch({ type: "ADD_ERROR", id: uid(), text: event.message as string });
+              dispatch({
+                type: "ADD_ERROR",
+                id: uid(),
+                text: event.message as string,
+              });
               break;
             }
           }
@@ -475,83 +658,222 @@ export default function Chat({ cwd }: { cwd: string }) {
   const showWelcome = historyLoaded && messages.length === 0;
 
   return (
-    <>
-      <header>
-        <div className="logo">⬡</div>
-        <h1>Oracle Keep</h1>
-        <div id="status-dot" className={busy ? "busy" : ""} />
-        <span className="cwd">{cwd}</span>
+    <div className="app">
+      {/* ── Top bar ── */}
+      <header className="topbar">
+        <div className="tb-left">
+          <button
+            className="icon-btn"
+            onClick={() => setRailCollapsed((c) => !c)}
+            aria-label="Toggle archive"
+          >
+            {railCollapsed ? (
+              <MenuIcon size={18} />
+            ) : (
+              <PanelLeftIcon size={18} />
+            )}
+          </button>
+
+          <div className="tb-brand">
+            <img
+              className="tb-shield tb-shield--light"
+              src="/logo-shield-light.png"
+              alt=""
+              width={26}
+              height={26}
+            />
+            <img
+              className="tb-shield tb-shield--dark"
+              src="/logo-shield-dark.png"
+              alt=""
+              width={26}
+              height={26}
+            />
+            <div className="tb-word">
+              Oracle <span className="em">Keep</span>
+            </div>
+          </div>
+
+          <div className="tb-divider" />
+
+          <div className="tb-thread">
+            {busy && <span className="tb-lantern" />}
+            <span>{cwd}</span>
+          </div>
+        </div>
+
+        <div className="tb-right">
+          <button
+            className="icon-btn"
+            onClick={toggleTheme}
+            aria-label={theme === "dark" ? "Switch to light" : "Switch to dark"}
+            title={theme === "dark" ? "Light the day" : "Dim the lanterns"}
+          >
+            {theme === "dark" ? <SunIcon size={18} /> : <MoonIcon size={18} />}
+          </button>
+        </div>
       </header>
 
-      <div id="messages">
-        {showWelcome && (
-          <div className="welcome">
-            <div className="icon">🤖</div>
-            <h2>Oracle is ready</h2>
-            <p>
-              Ask anything. The agent can read, write, and run commands in{" "}
-              <code>{cwd}</code>.
-            </p>
-            <p style={{ marginTop: "4px", fontSize: "12px" }}>
-              Shift+Enter for new line · Enter to send
-            </p>
-          </div>
+      {/* ── Left rail ── */}
+      <aside className={`rail ${railCollapsed ? "collapsed" : ""}`}>
+        <div className="rail-toggle-wrap">
+          <button
+            className="icon-btn"
+            onClick={() => setRailCollapsed((c) => !c)}
+            aria-label={railCollapsed ? "Expand archive" : "Collapse archive"}
+          >
+            <PanelLeftIcon size={18} />
+          </button>
+        </div>
+
+        {!railCollapsed && (
+          <div className="rail-eyebrow">Scrolls</div>
         )}
 
-        {messages.map((msg) => {
-          switch (msg.kind) {
-            case "user":
-              return <UserBubble key={msg.id} text={msg.text} />;
-            case "assistant":
-              return (
-                <AssistantBubble
-                  key={msg.id}
-                  text={msg.text}
-                  streaming={msg.streaming}
-                />
-              );
-            case "tool_group":
-              return (
-                <ToolGroup
-                  key={msg.id}
-                  message={msg}
-                  onToggle={(toolId) =>
-                    dispatch({ type: "TOGGLE_TOOL", groupId: msg.id, toolId })
+        <div className="rail-scroll">
+          {!railCollapsed && (
+            <p
+              style={{
+                padding: "24px 16px",
+                fontFamily: "var(--font-serif)",
+                fontStyle: "italic",
+                fontSize: 13,
+                color: "var(--fg-3)",
+                textAlign: "center",
+                margin: 0,
+              }}
+            >
+              The archivist keeps no scrolls yet.
+            </p>
+          )}
+        </div>
+
+        <div className="rail-foot">
+          {railCollapsed ? (
+            <span
+              className="persona-avatar oracle"
+              style={{ width: 22, height: 22, fontSize: 10 }}
+            >
+              O
+            </span>
+          ) : (
+            <div className="persona-chip">
+              <span className="persona-avatar oracle">O</span>
+              <span>
+                <span className="persona-name">The Oracle</span>
+                <span className="persona-role">pi agent</span>
+              </span>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* ── Stage ── */}
+      <main className="stage">
+        <div className="convo-wrap">
+          {showResumeBanner && (
+            <div className="resume-banner">
+              <LanternIcon size={16} className="lantern-icon" />
+              <span>
+                Welcome back. Your consultation resumed where you left off.
+              </span>
+              <button onClick={() => setShowResumeBanner(false)}>Dismiss</button>
+            </div>
+          )}
+
+          <div className="convo-scroll">
+            <div className="convo">
+              {showWelcome && <EmptyState cwd={cwd} />}
+
+              {messages.map((msg) => {
+                switch (msg.kind) {
+                  case "user":
+                    return <UserMessage key={msg.id} text={msg.text} />;
+                  case "assistant":
+                    return (
+                      <AssistantMessage
+                        key={msg.id}
+                        text={msg.text}
+                        streaming={msg.streaming}
+                      />
+                    );
+                  case "tool_group":
+                    return (
+                      <ToolGroup
+                        key={msg.id}
+                        message={msg}
+                        onToggle={(toolId) =>
+                          dispatch({
+                            type: "TOGGLE_TOOL",
+                            groupId: msg.id,
+                            toolId,
+                          })
+                        }
+                      />
+                    );
+                  case "compaction":
+                    return (
+                      <CompactionMarker key={msg.id} done={msg.done} />
+                    );
+                  case "error":
+                    return (
+                      <div key={msg.id} className="error-banner">
+                        ⚠ {msg.text}
+                      </div>
+                    );
+                }
+              })}
+
+              <div className="flourish-wrap" aria-hidden="true">
+                <Flourish />
+              </div>
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+
+          {/* ── Composer ── */}
+          <div className="composer">
+            <div className="composer-inner">
+              <div className="composer-box">
+                <textarea
+                  ref={textareaRef}
+                  className="composer-input"
+                  placeholder={
+                    busy
+                      ? "The Oracle is speaking…"
+                      : "Ask, or set out on a new line…"
                   }
+                  value={input}
+                  rows={1}
+                  disabled={busy}
+                  autoFocus
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    resizeTextarea();
+                  }}
+                  onKeyDown={handleKeyDown}
                 />
-              );
-            case "compaction":
-              return <CompactionBanner key={msg.id} done={msg.done} />;
-            case "error":
-              return <ErrorBanner key={msg.id} text={msg.text} />;
-          }
-        })}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      <div id="input-area">
-        <textarea
-          ref={textareaRef}
-          id="input"
-          rows={1}
-          placeholder="Ask the oracle anything…"
-          autoFocus
-          value={input}
-          onChange={(e) => {
-            setInput(e.target.value);
-            resizeTextarea();
-          }}
-          onKeyDown={handleKeyDown}
-        />
-        <button
-          id="send"
-          disabled={busy || !input.trim()}
-          onClick={sendMessage}
-        >
-          Send
-        </button>
-      </div>
-    </>
+                <button
+                  className="send-btn"
+                  onClick={sendMessage}
+                  disabled={busy || !input.trim()}
+                  title="Send (↵)"
+                  aria-label="Send"
+                >
+                  <SendIcon size={16} />
+                </button>
+              </div>
+              <div className="composer-foot">
+                <div className="composer-shortcuts">
+                  Speaking to <em style={{ color: "var(--fg-2)" }}>The Oracle</em>
+                  {" · "}
+                  <kbd>↵</kbd> to send, <kbd>⇧↵</kbd> for a new line
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }
