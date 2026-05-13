@@ -1,13 +1,14 @@
 import {
   getSession,
-  isProcessing,
-  setProcessing,
-  broadcastEvent,
-  addSubscriber,
-  removeSubscriber,
-  getEventBuffer,
-  clearEventBuffer,
+  isProcessingSession,
+  setProcessingSession,
+  broadcastEventToSession,
+  addSubscriberToSession,
+  removeSubscriberFromSession,
+  getEventBufferForSession,
+  clearEventBufferForSession,
 } from "@/lib/session";
+import { findSession } from "@/lib/registry";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +23,18 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
+const sseHeaders = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  Connection: "keep-alive",
+};
+
 /**
- * Build an SSE stream that replays the current turn's event buffer then
- * subscribes for future events. Closes itself when it receives "done" or
- * "error", or when the client disconnects.
+ * Build an SSE stream for a session that replays the current turn's event
+ * buffer then subscribes for future events. Closes when it receives "done"
+ * or "error", or when the client disconnects.
  */
-function buildEventStream(): ReadableStream {
+function buildEventStream(id: string): ReadableStream {
   const streamId = uid();
 
   return new ReadableStream({
@@ -42,40 +49,59 @@ function buildEventStream(): ReadableStream {
 
       // Register subscriber BEFORE replaying the buffer so no events are lost
       // between replay and live dispatch. JS is single-threaded so no race.
-      addSubscriber(streamId, (type, data = {}) => {
+      addSubscriberToSession(id, streamId, (type, data = {}) => {
         enqueue(type, data);
         if (type === "done" || type === "error") {
-          removeSubscriber(streamId);
+          removeSubscriberFromSession(id, streamId);
           try { controller.close(); } catch { /* already closed */ }
         }
       });
 
       // Replay events that fired before this stream connected.
-      for (const evt of getEventBuffer()) {
+      for (const evt of getEventBufferForSession(id)) {
         enqueue(evt.type, evt.data);
       }
 
       // If the turn already finished, close now (done is in the buffer).
-      if (!isProcessing()) {
-        removeSubscriber(streamId);
+      if (!isProcessingSession(id)) {
+        removeSubscriberFromSession(id, streamId);
         try { controller.close(); } catch { /* already closed */ }
       }
     },
 
     cancel() {
       // Client disconnected — unsubscribe but do NOT abort the agent turn.
-      removeSubscriber(streamId);
+      removeSubscriberFromSession(id, streamId);
     },
   });
 }
 
+// ── GET — reconnect to an in-progress or just-completed turn ──────────────────
+
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const record = await findSession(id);
+  if (!record) return Response.json({ error: "Session not found" }, { status: 404 });
+  return new Response(buildEventStream(id), { headers: sseHeaders });
+}
+
 // ── POST — start a new agent turn ─────────────────────────────────────────────
 
-export async function POST(req: Request) {
-  if (isProcessing()) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const record = await findSession(id);
+  if (!record) return Response.json({ error: "Session not found" }, { status: 404 });
+
+  if (isProcessingSession(id)) {
     return Response.json(
       { error: "Agent is busy — please wait for the current response to finish." },
-      { status: 409 }
+      { status: 409 },
     );
   }
 
@@ -87,30 +113,30 @@ export async function POST(req: Request) {
   } catch {
     return Response.json(
       { error: "Body must be JSON { message: string }" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  const session = await getSession();
+  const session = await getSession(id, record.cwd);
 
   // Prepare a fresh turn: mark busy and clear the previous turn's buffer.
-  setProcessing(true);
-  clearEventBuffer();
+  setProcessingSession(id, true);
+  clearEventBufferForSession(id);
 
-  // Subscribe to pi session events and route them through broadcastEvent so
-  // they land in the buffer AND reach all active SSE subscribers.
+  // Subscribe to pi session events and route them through broadcastEventToSession
+  // so they land in the buffer AND reach all active SSE subscribers.
   const unsubscribeSession = session.subscribe((event) => {
     switch (event.type) {
       case "message_update": {
         const ae = event.assistantMessageEvent;
         if (ae.type === "text_delta")
-          broadcastEvent("text", { delta: ae.delta });
+          broadcastEventToSession(id, "text", { delta: ae.delta });
         if (ae.type === "thinking_delta")
-          broadcastEvent("thinking", { delta: ae.delta });
+          broadcastEventToSession(id, "thinking", { delta: ae.delta });
         break;
       }
       case "tool_execution_start":
-        broadcastEvent("tool_start", {
+        broadcastEventToSession(id, "tool_start", {
           id: event.toolCallId,
           name: event.toolName,
           label: event.toolName,
@@ -126,21 +152,21 @@ export async function POST(req: Request) {
             ?.filter((b) => b.type === "text")
             .map((b) => b.text ?? "")
             .join("") ?? "";
-        if (text) broadcastEvent("tool_update", { id: event.toolCallId, text });
+        if (text) broadcastEventToSession(id, "tool_update", { id: event.toolCallId, text });
         break;
       }
       case "tool_execution_end":
-        broadcastEvent("tool_end", {
+        broadcastEventToSession(id, "tool_end", {
           id: event.toolCallId,
           name: event.toolName,
           isError: event.isError ?? false,
         });
         break;
       case "compaction_start":
-        broadcastEvent("compaction_start");
+        broadcastEventToSession(id, "compaction_start");
         break;
       case "compaction_end":
-        broadcastEvent("compaction_end");
+        broadcastEventToSession(id, "compaction_end");
         break;
     }
   });
@@ -149,34 +175,16 @@ export async function POST(req: Request) {
   // returned immediately and the turn runs to completion even if the client
   // disconnects.
   session.prompt(message)
-    .then(() => broadcastEvent("done"))
+    .then(() => broadcastEventToSession(id, "done"))
     .catch((err) =>
-      broadcastEvent("error", {
+      broadcastEventToSession(id, "error", {
         message: err instanceof Error ? err.message : String(err),
-      })
+      }),
     )
     .finally(() => {
       unsubscribeSession();
-      setProcessing(false);
+      setProcessingSession(id, false);
     });
 
-  return new Response(buildEventStream(), {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
-}
-
-// ── GET — reconnect to an in-progress or just-completed turn ──────────────────
-
-export async function GET() {
-  return new Response(buildEventStream(), {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  });
+  return new Response(buildEventStream(id), { headers: sseHeaders });
 }

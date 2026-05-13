@@ -1,5 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import Sidebar from "@/components/Sidebar";
+import { SidebarProvider } from "@/components/sidebar-context";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export const metadata: Metadata = {
   title: "Oracle Keep",
@@ -27,7 +36,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" data-theme="dark">
-      <body>{children}</body>
+      <body>
+        <SidebarProvider>
+          <div style={{ display: "flex", height: "100vh", overflow: "hidden", position: "relative" }}>
+            <Sidebar />
+            {children}
+          </div>
+        </SidebarProvider>
+      </body>
     </html>
   );
 }

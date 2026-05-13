@@ -12,7 +12,6 @@ import type { HistoryItem } from "@/types/chat";
 import Image from "next/image";
 import {
   MenuIcon,
-  PanelLeftIcon,
   SunIcon,
   MoonIcon,
   SendIcon,
@@ -21,6 +20,7 @@ import {
   ChevIcon,
   Flourish,
 } from "@/components/icons";
+import { useSidebar } from "@/components/sidebar-context";
 
 // Configure marked with language annotation for code blocks.
 const renderer = new marked.Renderer();
@@ -706,32 +706,6 @@ function CompactionMarker({ done }: { done: boolean }) {
   );
 }
 
-function EmptyState({ cwd }: { cwd: string }) {
-  return (
-    <div className="empty">
-      <Image
-        className="empty-shield empty-shield--light"
-        src="/logo-shield-light.png"
-        alt=""
-        width={72}
-        height={72}
-      />
-      <Image
-        className="empty-shield empty-shield--dark"
-        src="/logo-shield-dark.png"
-        alt=""
-        width={72}
-        height={72}
-      />
-      <h2 className="empty-title">A new page.</h2>
-      <p className="empty-lede">
-        The Oracle is ready. Ask anything — the agent can read, write, and run
-        commands in <code>{cwd}</code>.
-      </p>
-    </div>
-  );
-}
-
 function ToastList({ toasts }: { toasts: Toast[] }) {
   if (toasts.length === 0) return null;
   return (
@@ -813,12 +787,11 @@ function WidgetPanel({ widgets }: { widgets: Map<string, string[]> }) {
 
 // ── Chat ───────────────────────────────────────────────────────────────────────
 
-export default function Chat({ cwd }: { cwd: string }) {
+export default function Chat({ sessionId }: { sessionId: string }) {
+  const { toggle: toggleSidebar } = useSidebar();
   const [messages, dispatch] = useReducer(reducer, []);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [railCollapsed, setRailCollapsed] = useState(true);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [showResumeBanner, setShowResumeBanner] = useState(false);
   const [showReconnectBanner, setShowReconnectBanner] = useState(false);
@@ -863,7 +836,7 @@ export default function Chat({ cwd }: { cwd: string }) {
     async function init() {
       // Load conversation history.
       try {
-        const r = await fetch("/api/history");
+        const r = await fetch(`/api/s/${sessionId}/history`);
         const { items }: { items: HistoryItem[] } = await r.json();
         if (items?.length > 0) {
           dispatch({ type: "HISTORY_LOADED", messages: historyToMessages(items) });
@@ -873,11 +846,9 @@ export default function Chat({ cwd }: { cwd: string }) {
         // History load failure is non-fatal.
       }
 
-      setHistoryLoaded(true);
-
       // Check whether the agent is already processing (page was closed mid-turn).
       try {
-        const statusRes = await fetch("/api/status");
+        const statusRes = await fetch(`/api/s/${sessionId}/status`);
         const { isProcessing } = await statusRes.json();
         if (!isProcessing) return;
 
@@ -890,7 +861,7 @@ export default function Chat({ cwd }: { cwd: string }) {
         currentToolCallId.current = null;
         currentCompactionId.current = null;
 
-        const reconnect = await fetch("/api/chat");
+        const reconnect = await fetch(`/api/s/${sessionId}/chat`);
         if (reconnect.ok && reconnect.body) {
           await processEventStream(reconnect.body, streamHandlers());
         }
@@ -906,7 +877,7 @@ export default function Chat({ cwd }: { cwd: string }) {
 
   // Hydrate widget state on mount so refreshes and cross-device loads restore the panel.
   useEffect(() => {
-    fetch("/api/widgets")
+    fetch(`/api/s/${sessionId}/widgets`)
       .then((r) => r.json())
       .then((snapshot: Record<string, string[]>) => {
         const entries = Object.entries(snapshot);
@@ -958,7 +929,7 @@ export default function Chat({ cwd }: { cwd: string }) {
     dispatch({ type: "ADD_USER", id: uid(), text });
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch(`/api/s/${sessionId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
@@ -1007,8 +978,6 @@ export default function Chat({ cwd }: { cwd: string }) {
     [sendMessage]
   );
 
-  const showWelcome = historyLoaded && messages.length === 0;
-
   return (
     <div className="app">
       <ToastList toasts={toasts} />
@@ -1017,16 +986,11 @@ export default function Chat({ cwd }: { cwd: string }) {
         <div className="tb-left">
           <button
             className="icon-btn"
-            onClick={() => setRailCollapsed((c) => !c)}
-            aria-label="Toggle archive"
+            onClick={toggleSidebar}
+            aria-label="Toggle sidebar"
           >
-            {railCollapsed ? (
-              <MenuIcon size={18} />
-            ) : (
-              <PanelLeftIcon size={18} />
-            )}
+            <MenuIcon size={18} />
           </button>
-
           <div className="tb-brand">
             <Image
               className="tb-shield tb-shield--light"
@@ -1047,12 +1011,6 @@ export default function Chat({ cwd }: { cwd: string }) {
             </div>
           </div>
 
-          <div className="tb-divider" />
-
-          <div className="tb-thread">
-            {busy && <span className="tb-lantern" />}
-            <span>{cwd}</span>
-          </div>
         </div>
 
         <div className="tb-right">
@@ -1066,60 +1024,6 @@ export default function Chat({ cwd }: { cwd: string }) {
           </button>
         </div>
       </header>
-
-      {/* ── Left rail ── */}
-      <aside className={`rail ${railCollapsed ? "collapsed" : ""}`}>
-        <div className="rail-toggle-wrap">
-          <button
-            className="icon-btn"
-            onClick={() => setRailCollapsed((c) => !c)}
-            aria-label={railCollapsed ? "Expand archive" : "Collapse archive"}
-          >
-            <PanelLeftIcon size={18} />
-          </button>
-        </div>
-
-        {!railCollapsed && (
-          <div className="rail-eyebrow">Scrolls</div>
-        )}
-
-        <div className="rail-scroll">
-          {!railCollapsed && (
-            <p
-              style={{
-                padding: "24px 16px",
-                fontFamily: "var(--font-serif)",
-                fontStyle: "italic",
-                fontSize: 13,
-                color: "var(--fg-3)",
-                textAlign: "center",
-                margin: 0,
-              }}
-            >
-              The archivist keeps no scrolls yet.
-            </p>
-          )}
-        </div>
-
-        <div className="rail-foot">
-          {railCollapsed ? (
-            <span
-              className="persona-avatar oracle"
-              style={{ width: 22, height: 22, fontSize: 10 }}
-            >
-              O
-            </span>
-          ) : (
-            <div className="persona-chip">
-              <span className="persona-avatar oracle">O</span>
-              <span>
-                <span className="persona-name">The Oracle</span>
-                <span className="persona-role">pi agent</span>
-              </span>
-            </div>
-          )}
-        </div>
-      </aside>
 
       {/* ── Stage ── */}
       <main className="stage">
@@ -1146,8 +1050,6 @@ export default function Chat({ cwd }: { cwd: string }) {
 
           <div className="convo-scroll" ref={convoScrollRef} onScroll={handleConvoScroll}>
             <div className="convo">
-              {showWelcome && <EmptyState cwd={cwd} />}
-
               {messages.map((msg) => {
                 switch (msg.kind) {
                   case "thinking":

@@ -2,117 +2,145 @@ import { createAgentSession, SessionManager } from "@mariozechner/pi-coding-agen
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { createWebUIContext, type UIEnqueue, type WebUIContext } from "./ui-context";
 
-export const CWD = process.env.ORACLE_CWD ?? process.cwd();
-
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export type BufferedEvent = { type: string; data: Record<string, unknown> };
 
-// ── Singleton ──────────────────────────────────────────────────────────────────
+type SessionState = {
+  sessionPromise: Promise<AgentSession>;
+  isProcessing: boolean;
+  /** All events emitted during the current turn. Cleared at turn start. */
+  eventBuffer: BufferedEvent[];
+  /** Active SSE subscribers keyed by an arbitrary ID. */
+  subscribers: Map<string, UIEnqueue>;
+  uiContext: WebUIContext;
+};
+
+// ── HMR-safe sessions map ──────────────────────────────────────────────────────
 // Stored on globalThis so it survives Next.js hot-module reloads in development.
 declare global {
-  // eslint-disable-next-line no-var
-  var __oracleKeep:
-    | {
-        sessionPromise: Promise<AgentSession>;
-        isProcessing: boolean;
-        /** All events emitted during the current turn. Cleared at turn start. */
-        eventBuffer: BufferedEvent[];
-        /** Active SSE subscribers keyed by an arbitrary ID. */
-        subscribers: Map<string, UIEnqueue>;
-        uiContext: WebUIContext | null;
-      }
-    | undefined;
+  var __oracleKeepSessions: Map<string, SessionState> | undefined;
 }
 
-function singleton() {
-  if (!globalThis.__oracleKeep) {
-    console.log("\n  Oracle Keep");
-    console.log(`  Working directory : ${CWD}`);
-    console.log("  Starting agent session…\n");
-
-    // broadcastEvent is defined below; the closure captures globalThis.__oracleKeep
-    // lazily, so it's safe to reference before the singleton field is assigned.
-    const uiContext = createWebUIContext(
-      () => (type: string, data: Record<string, unknown> = {}) =>
-        broadcastEvent(type, data),
-    );
-
-    const sessionPromise = createAgentSession({
-      sessionManager: SessionManager.continueRecent(CWD),
-      cwd: CWD,
-    }).then(async ({ session, modelFallbackMessage }) => {
-      if (modelFallbackMessage) console.log(`  Note: ${modelFallbackMessage}`);
-      await session.bindExtensions({ uiContext });
-      console.log(`  Session          : ${session.sessionFile ?? "(in-memory)"}`);
-      console.log("  Agent ready.\n");
-      return session;
-    });
-
-    globalThis.__oracleKeep = {
-      sessionPromise,
-      isProcessing: false,
-      eventBuffer: [],
-      subscribers: new Map(),
-      uiContext,
-    };
+function getSessionsMap(): Map<string, SessionState> {
+  if (!globalThis.__oracleKeepSessions) {
+    globalThis.__oracleKeepSessions = new Map();
   }
-  return globalThis.__oracleKeep;
+  return globalThis.__oracleKeepSessions;
+}
+
+// ── Session init ───────────────────────────────────────────────────────────────
+
+function createSessionState(id: string, cwd: string): SessionState {
+  console.log("\n  Oracle Keep");
+  console.log(`  Session          : ${id}`);
+  console.log(`  Working directory: ${cwd}`);
+  console.log("  Starting agent session…\n");
+
+  // uiContext is created before state is stored in the map because the
+  // broadcastEventToSession closure captures `id` directly — no circular
+  // reference through the map entry itself.
+  const uiContext = createWebUIContext(
+    () => (type: string, data: Record<string, unknown> = {}) =>
+      broadcastEventToSession(id, type, data),
+  );
+
+  const sessionPromise = createAgentSession({
+    sessionManager: SessionManager.continueRecent(cwd),
+    cwd,
+  }).then(async ({ session, modelFallbackMessage }) => {
+    if (modelFallbackMessage) console.log(`  Note: ${modelFallbackMessage}`);
+    await session.bindExtensions({ uiContext });
+    console.log(`  Session file     : ${session.sessionFile ?? "(in-memory)"}`);
+    console.log("  Agent ready.\n");
+    return session;
+  });
+
+  return {
+    sessionPromise,
+    isProcessing: false,
+    eventBuffer: [],
+    subscribers: new Map(),
+    uiContext,
+  };
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-export function getSession(): Promise<AgentSession> {
-  return singleton().sessionPromise;
-}
-
-export function isProcessing(): boolean {
-  return singleton().isProcessing;
-}
-
-export function setProcessing(value: boolean): void {
-  singleton().isProcessing = value;
+/**
+ * Lazily creates a SessionState for the (id, cwd) pair if one does not yet
+ * exist, then returns the promise that resolves to the AgentSession.
+ * Subsequent calls with the same id always return the same session.
+ */
+export function getSession(id: string, cwd: string): Promise<AgentSession> {
+  const map = getSessionsMap();
+  if (!map.has(id)) {
+    map.set(id, createSessionState(id, cwd));
+  }
+  return map.get(id)!.sessionPromise;
 }
 
 /**
- * Broadcast an event to all active subscribers and append it to the buffer.
- * Call clearEventBuffer() before starting a new turn so the buffer only
- * contains events for the current turn.
+ * Returns false for sessions not yet in the map — a session that has never
+ * received a message is never processing by definition.
  */
-export function broadcastEvent(
+export function isProcessingSession(id: string): boolean {
+  return getSessionsMap().get(id)?.isProcessing ?? false;
+}
+
+export function setProcessingSession(id: string, value: boolean): void {
+  const state = getSessionsMap().get(id);
+  if (state) state.isProcessing = value;
+}
+
+/**
+ * Broadcast an event to all subscribers of a session and append it to that
+ * session's buffer. Events from one session never reach another session's
+ * subscribers.
+ */
+export function broadcastEventToSession(
+  id: string,
   type: string,
   data: Record<string, unknown> = {},
 ): void {
-  const s = singleton();
-  s.eventBuffer.push({ type, data });
-  for (const fn of s.subscribers.values()) {
+  const state = getSessionsMap().get(id);
+  if (!state) return;
+  state.eventBuffer.push({ type, data });
+  for (const fn of state.subscribers.values()) {
     fn(type, data);
   }
 }
 
-/** Register an SSE subscriber. Use a stable id so it can be removed later. */
-export function addSubscriber(id: string, fn: UIEnqueue): void {
-  singleton().subscribers.set(id, fn);
+/** Register an SSE subscriber on a session. Use a stable subscriberId. */
+export function addSubscriberToSession(
+  id: string,
+  subscriberId: string,
+  fn: UIEnqueue,
+): void {
+  const state = getSessionsMap().get(id);
+  if (state) state.subscribers.set(subscriberId, fn);
 }
 
-/** Remove a subscriber. Safe to call even if the id was never registered. */
-export function removeSubscriber(id: string): void {
-  singleton().subscribers.delete(id);
+/** Remove a subscriber from a session. Safe even if id or subscriberId never existed. */
+export function removeSubscriberFromSession(
+  id: string,
+  subscriberId: string,
+): void {
+  getSessionsMap().get(id)?.subscribers.delete(subscriberId);
 }
 
-/**
- * Returns a snapshot of the current turn's event buffer.
- * Safe to call from any context.
- */
-export function getEventBuffer(): BufferedEvent[] {
-  return [...singleton().eventBuffer];
+/** Returns a snapshot of the session's current event buffer. */
+export function getEventBufferForSession(id: string): BufferedEvent[] {
+  return [...(getSessionsMap().get(id)?.eventBuffer ?? [])];
 }
 
-/** Clear the event buffer. Call before starting a new agent turn. */
-export function clearEventBuffer(): void {
-  singleton().eventBuffer = [];
+/** Clears the event buffer for a session. Call before starting a new agent turn. */
+export function clearEventBufferForSession(id: string): void {
+  const state = getSessionsMap().get(id);
+  if (state) state.eventBuffer = [];
 }
 
-export function getWidgetSnapshot(): Record<string, string[]> {
-  return globalThis.__oracleKeep?.uiContext?.getWidgetSnapshot() ?? {};
+/** Returns the widget snapshot for a session, or {} if the session is not in the map. */
+export function getWidgetSnapshotForSession(id: string): Record<string, string[]> {
+  return getSessionsMap().get(id)?.uiContext.getWidgetSnapshot() ?? {};
 }
