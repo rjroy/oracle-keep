@@ -1,0 +1,24 @@
+{
+  "name": "oracle-keep",
+  "version": "1.0.0",
+  "description": "A kept oracle — web chat interface for Pi coding agent",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "latest",
+    "marked": "^15.0.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.0.0"
+  }
+}

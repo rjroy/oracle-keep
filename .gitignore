@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Package manager lockfiles — bun.lock is committed; others are noise
+package-lock.json
+yarn.lock
+.yarn/install-state.gz
+
+# Next.js
+.next/
+out/
+
+# Build
+dist/
+build/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Test coverage
+coverage/
+
+# Environment — never commit secrets
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / Editor
+.DS_Store
+*.pem
+.vscode/
+.idea/
+
+# Vercel (not deployed here, but guard against accidents)
+.vercel
