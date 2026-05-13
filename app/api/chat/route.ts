@@ -1,4 +1,4 @@
-import { getSession, isProcessing, setProcessing } from "@/lib/session";
+import { getSession, isProcessing, setProcessing, setEnqueue, clearEnqueue } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +88,8 @@ export async function POST(req: Request) {
         }
       });
 
+      setEnqueue(enqueue);
+
       try {
         await session.prompt(message);
         enqueue("done");
@@ -97,6 +99,7 @@ export async function POST(req: Request) {
         });
       } finally {
         unsubscribe();
+        clearEnqueue();
         setProcessing(false);
         controller.close();
       }

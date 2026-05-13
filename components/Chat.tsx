@@ -41,6 +41,12 @@ marked.use({ breaks: true, gfm: true, renderer });
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+type Toast = {
+  id: string;
+  message: string;
+  level: "info" | "warning" | "error";
+};
+
 type ToolEntry = {
   id: string;
   name: string;
@@ -428,6 +434,45 @@ function EmptyState({ cwd }: { cwd: string }) {
   );
 }
 
+function ToastList({ toasts }: { toasts: Toast[] }) {
+  if (toasts.length === 0) return null;
+  return (
+    <div className="toast-list">
+      {toasts.map((t) => (
+        <div key={t.id} className={`toast toast--${t.level}`}>
+          {t.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatusBar({ statuses }: { statuses: Map<string, string> }) {
+  if (statuses.size === 0) return null;
+  return (
+    <div className="ext-status-bar">
+      {Array.from(statuses.entries()).map(([key, text]) => (
+        <span key={key} className="ext-status-item">{text}</span>
+      ))}
+    </div>
+  );
+}
+
+function WidgetPanel({ widgets }: { widgets: Map<string, string[]> }) {
+  if (widgets.size === 0) return null;
+  return (
+    <div className="widget-panel">
+      {Array.from(widgets.entries()).map(([key, lines]) => (
+        <div key={key} className="widget-block">
+          {lines.map((line, i) => (
+            <div key={i} className="widget-line">{line}</div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Chat ───────────────────────────────────────────────────────────────────────
 
 export default function Chat({ cwd }: { cwd: string }) {
@@ -438,6 +483,9 @@ export default function Chat({ cwd }: { cwd: string }) {
   const [railCollapsed, setRailCollapsed] = useState(true);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [showResumeBanner, setShowResumeBanner] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [statuses, setStatuses] = useState<Map<string, string>>(new Map());
+  const [widgets, setWidgets] = useState<Map<string, string[]>>(new Map());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -622,6 +670,39 @@ export default function Chat({ cwd }: { cwd: string }) {
               }
               break;
             }
+            case "notify": {
+              const id = uid();
+              const level = (event.level as Toast["level"]) ?? "info";
+              setToasts((prev) => [...prev, { id, message: event.message as string, level }]);
+              setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+              break;
+            }
+            case "status": {
+              const key = event.key as string;
+              const text = event.text as string | null;
+              setStatuses((prev) => {
+                const next = new Map(prev);
+                if (text == null) next.delete(key);
+                else next.set(key, text);
+                return next;
+              });
+              break;
+            }
+            case "widget": {
+              const key = event.key as string;
+              const lines = event.lines as string[] | null;
+              setWidgets((prev) => {
+                const next = new Map(prev);
+                if (lines == null) next.delete(key);
+                else next.set(key, lines);
+                return next;
+              });
+              break;
+            }
+            case "working_message":
+            case "working_visible":
+              // Acknowledged — no web equivalent yet.
+              break;
             case "error": {
               dispatch({
                 type: "ADD_ERROR",
@@ -659,6 +740,7 @@ export default function Chat({ cwd }: { cwd: string }) {
 
   return (
     <div className="app">
+      <ToastList toasts={toasts} />
       {/* ── Top bar ── */}
       <header className="topbar">
         <div className="tb-left">
@@ -833,6 +915,8 @@ export default function Chat({ cwd }: { cwd: string }) {
 
           {/* ── Composer ── */}
           <div className="composer">
+            <WidgetPanel widgets={widgets} />
+            <StatusBar statuses={statuses} />
             <div className="composer-inner">
               <div className="composer-box">
                 <textarea
