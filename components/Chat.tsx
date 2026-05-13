@@ -366,7 +366,10 @@ async function processEventStream(
           break;
         }
         case "tool_start": {
-          assistantIdRef.current = null;
+          if (assistantIdRef.current) {
+            dispatch({ type: "FINALIZE_ASSISTANT", id: assistantIdRef.current });
+            assistantIdRef.current = null;
+          }
           if (!toolGroupIdRef.current) {
             const id = uid();
             toolGroupIdRef.current = id;
@@ -388,11 +391,11 @@ async function processEventStream(
           break;
         }
         case "tool_update": {
-          if (toolGroupIdRef.current && toolCallIdRef.current) {
+          if (toolGroupIdRef.current && event.id) {
             dispatch({
               type: "SET_TOOL_OUTPUT",
               groupId: toolGroupIdRef.current,
-              toolId: toolCallIdRef.current,
+              toolId: event.id as string,
               text: event.text as string,
             });
           }
@@ -407,7 +410,11 @@ async function processEventStream(
               isError: event.isError as boolean,
             });
           }
-          toolCallIdRef.current = null;
+          // Only clear the ref if it still points to this tool —
+          // parallel tool calls may have already advanced it.
+          if (toolCallIdRef.current === (event.id as string)) {
+            toolCallIdRef.current = null;
+          }
           break;
         }
         case "compaction_start": {
