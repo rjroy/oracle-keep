@@ -366,7 +366,10 @@ async function processEventStream(
           break;
         }
         case "tool_start": {
-          assistantIdRef.current = null;
+          if (assistantIdRef.current) {
+            dispatch({ type: "FINALIZE_ASSISTANT", id: assistantIdRef.current });
+            assistantIdRef.current = null;
+          }
           if (!toolGroupIdRef.current) {
             const id = uid();
             toolGroupIdRef.current = id;
