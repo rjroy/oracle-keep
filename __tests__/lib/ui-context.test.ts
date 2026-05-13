@@ -126,6 +126,40 @@ describe("createWebUIContext — setWidget", () => {
 
 // ── getEnqueue returning null ──────────────────────────────────────────────────
 
+describe("createWebUIContext — getWidgetSnapshot", () => {
+  test("returns empty object when no widgets are set", () => {
+    const { ctx } = makeContext();
+    expect(ctx.getWidgetSnapshot()).toEqual({});
+  });
+
+  test("returns string-array widget by key", () => {
+    const { ctx } = makeContext();
+    ctx.setWidget("search", ["line 1", "line 2"]);
+    expect(ctx.getWidgetSnapshot()).toEqual({ search: ["line 1", "line 2"] });
+  });
+
+  test("returns rendered output for component-factory widget", () => {
+    const { ctx } = makeContext();
+    ctx.setWidget("w", (_tui, _theme) => ({ render: () => ["rendered"] }));
+    expect(ctx.getWidgetSnapshot()).toEqual({ w: ["rendered"] });
+  });
+
+  test("cleared widget is absent from snapshot", () => {
+    const { ctx } = makeContext();
+    ctx.setWidget("search", ["line 1"]);
+    ctx.setWidget("search", undefined);
+    expect(ctx.getWidgetSnapshot()).toEqual({});
+  });
+
+  test("snapshot includes all active widgets", () => {
+    const { ctx } = makeContext();
+    ctx.setWidget("a", ["alpha"]);
+    ctx.setWidget("b", ["beta"]);
+    const snap = ctx.getWidgetSnapshot();
+    expect(snap).toEqual({ a: ["alpha"], b: ["beta"] });
+  });
+});
+
 describe("createWebUIContext — null enqueue", () => {
   test("methods do not throw when getEnqueue returns null", () => {
     const ctx = createWebUIContext(() => null);

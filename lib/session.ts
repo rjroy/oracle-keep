@@ -1,6 +1,6 @@
 import { createAgentSession, SessionManager } from "@mariozechner/pi-coding-agent";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
-import { createWebUIContext, type UIEnqueue } from "./ui-context";
+import { createWebUIContext, type UIEnqueue, type WebUIContext } from "./ui-context";
 
 export const CWD = process.env.ORACLE_CWD ?? process.cwd();
 
@@ -8,7 +8,7 @@ export const CWD = process.env.ORACLE_CWD ?? process.cwd();
 // Stored on globalThis so it survives Next.js hot-module reloads in development.
 declare global {
   var __oracleKeep:
-    | { sessionPromise: Promise<AgentSession>; isProcessing: boolean; enqueue: UIEnqueue | null }
+    | { sessionPromise: Promise<AgentSession>; isProcessing: boolean; enqueue: UIEnqueue | null; uiContext: WebUIContext | null }
     | undefined;
 }
 
@@ -31,7 +31,7 @@ function singleton() {
       return session;
     });
 
-    globalThis.__oracleKeep = { sessionPromise, isProcessing: false, enqueue: null };
+    globalThis.__oracleKeep = { sessionPromise, isProcessing: false, enqueue: null, uiContext };
   }
   return globalThis.__oracleKeep;
 }
@@ -57,3 +57,8 @@ export function clearEnqueue(): void {
   const s = globalThis.__oracleKeep;
   if (s) s.enqueue = null;
 }
+
+export function getWidgetSnapshot(): Record<string, string[]> {
+  return globalThis.__oracleKeep?.uiContext?.getWidgetSnapshot() ?? {};
+}
+

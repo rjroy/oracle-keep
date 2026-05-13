@@ -48,7 +48,11 @@ type WidgetEntry = {
  * @param getEnqueue  Returns the active SSE enqueue fn, or null when no stream
  *                    is open. Calls made with null are silently dropped.
  */
-export function createWebUIContext(getEnqueue: () => UIEnqueue | null): ExtensionUIContext {
+export type WebUIContext = ExtensionUIContext & {
+  getWidgetSnapshot(): Record<string, string[]>;
+};
+
+export function createWebUIContext(getEnqueue: () => UIEnqueue | null): WebUIContext {
   // Active component-factory widgets, keyed by widget key.
   const widgets = new Map<string, WidgetEntry>();
 
@@ -133,6 +137,16 @@ export function createWebUIContext(getEnqueue: () => UIEnqueue | null): Extensio
     setTheme: () => ({ success: false, error: "themes not supported in web mode" }),
     theme: plainTheme,
 
+    // ── Snapshot ───────────────────────────────────────────────────────────────
+
+    getWidgetSnapshot(): Record<string, string[]> {
+      const out: Record<string, string[]> = {};
+      for (const [key, entry] of widgets.entries()) {
+        out[key] = entry.render(WIDGET_RENDER_WIDTH);
+      }
+      return out;
+    },
+
     // ── Phase 3: dialogs (not yet implemented) ─────────────────────────────────
 
     select: async () => undefined,
@@ -142,5 +156,5 @@ export function createWebUIContext(getEnqueue: () => UIEnqueue | null): Extensio
     custom: async () => { throw new Error("custom() not supported in web mode"); },
   };
 
-  return ctx as ExtensionUIContext;
+  return ctx as WebUIContext;
 }

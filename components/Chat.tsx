@@ -518,6 +518,19 @@ export default function Chat({ cwd }: { cwd: string }) {
       .catch(() => setHistoryLoaded(true));
   }, []);
 
+  // Hydrate widget state on mount so refreshes and cross-device loads restore the panel.
+  useEffect(() => {
+    fetch("/api/widgets")
+      .then((r) => r.json())
+      .then((snapshot: Record<string, string[]>) => {
+        const entries = Object.entries(snapshot);
+        if (entries.length > 0) {
+          setWidgets(new Map(entries));
+        }
+      })
+      .catch(() => {/* widgets stay empty — non-fatal */});
+  }, []);
+
   // Scroll to bottom when messages change.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
