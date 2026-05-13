@@ -7,8 +7,13 @@
   "theme_color": "#0e0e10",
   "icons": [
     {
-      "src": "/logo-shield-dark.png",
-      "sizes": "any",
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
       "type": "image/png"
     }
   ]

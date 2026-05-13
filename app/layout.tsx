@@ -3,6 +3,21 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Oracle Keep",
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Oracle Keep",
+  },
 };
 
 export default function RootLayout({
@@ -12,12 +27,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" data-theme="dark">
-      <head>
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="Oracle Keep" />
-      </head>
       <body>{children}</body>
     </html>
   );
