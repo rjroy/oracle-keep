@@ -1279,11 +1279,51 @@ pre code { background: transparent; border: 0; color: inherit; padding: 0; }
    EXTENSION UI — WIDGET PANEL
    ===================================================== */
 .widget-panel {
-  padding: 6px 0 8px;
+  padding: 4px 0 8px;
   display: flex;
   flex-direction: column;
   gap: 4px;
   width: 100%;
+}
+.widget-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 2px;
+}
+.widget-panel-label {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.widget-panel-count {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 10px;
+  color: var(--fg-2);
+  line-height: 1.8;
+}
+.widget-panel-toggle {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.widget-panel-chev {
+  transition: transform 0.15s ease;
+  transform: rotate(90deg);
+}
+.widget-panel-chev.is-open {
+  transform: rotate(270deg);
 }
 .widget-block {
   background: var(--bg-2);
