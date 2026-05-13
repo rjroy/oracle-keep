@@ -880,7 +880,7 @@ export default function Chat({ sessionId }: { sessionId: string }) {
     }
 
     init();
-  }, []);
+  }, [sessionId]);
 
   // Hydrate widget state on mount so refreshes and cross-device loads restore the panel.
   useEffect(() => {
@@ -893,7 +893,7 @@ export default function Chat({ sessionId }: { sessionId: string }) {
         }
       })
       .catch(() => {/* widgets stay empty — non-fatal */});
-  }, []);
+  }, [sessionId]);
 
   // Track whether the user is pinned to the bottom of the conversation.
   const handleConvoScroll = useCallback(() => {
@@ -973,7 +973,7 @@ export default function Chat({ sessionId }: { sessionId: string }) {
       setBusy(false);
       textareaRef.current?.focus();
     }
-  }, [input, busy, resizeTextarea]);
+  }, [sessionId, input, busy, resizeTextarea]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
