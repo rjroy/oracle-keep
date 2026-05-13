@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
+import { SidebarProvider } from "@/components/sidebar-context";
 
 export const metadata: Metadata = {
   title: "Oracle Keep",
@@ -29,10 +30,12 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme="dark">
       <body>
-        <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-          <Sidebar />
-          {children}
-        </div>
+        <SidebarProvider>
+          <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+            <Sidebar />
+            {children}
+          </div>
+        </SidebarProvider>
       </body>
     </html>
   );

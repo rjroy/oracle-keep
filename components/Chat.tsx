@@ -11,6 +11,7 @@ import { marked } from "marked";
 import type { HistoryItem } from "@/types/chat";
 import Image from "next/image";
 import {
+  MenuIcon,
   SunIcon,
   MoonIcon,
   SendIcon,
@@ -19,6 +20,7 @@ import {
   ChevIcon,
   Flourish,
 } from "@/components/icons";
+import { useSidebar } from "@/components/sidebar-context";
 
 // Configure marked with language annotation for code blocks.
 const renderer = new marked.Renderer();
@@ -786,6 +788,7 @@ function WidgetPanel({ widgets }: { widgets: Map<string, string[]> }) {
 // ── Chat ───────────────────────────────────────────────────────────────────────
 
 export default function Chat({ sessionId }: { sessionId: string }) {
+  const { toggle: toggleSidebar } = useSidebar();
   const [messages, dispatch] = useReducer(reducer, []);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -981,6 +984,13 @@ export default function Chat({ sessionId }: { sessionId: string }) {
       {/* ── Top bar ── */}
       <header className="topbar">
         <div className="tb-left">
+          <button
+            className="icon-btn"
+            onClick={toggleSidebar}
+            aria-label="Toggle sidebar"
+          >
+            <MenuIcon size={18} />
+          </button>
           <div className="tb-brand">
             <Image
               className="tb-shield tb-shield--light"
