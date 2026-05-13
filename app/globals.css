@@ -422,6 +422,8 @@ pre code { background: transparent; border: 0; color: inherit; padding: 0; }
    ===================================================== */
 .rail {
   grid-area: rail;
+  position: relative;
+  z-index: 5;
   background: var(--parchment-50);
   border-right: 1px solid var(--rule);
   width: 280px;
