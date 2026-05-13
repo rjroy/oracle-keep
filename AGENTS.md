@@ -2,6 +2,16 @@
 
 This file documents the verification steps every agent must run before declaring work complete.
 
+## Branching
+
+All work must happen on a branch. `master` is locked on the server and only accepts PRs — direct pushes are rejected.
+
+```bash
+git checkout -b your-branch-name
+```
+
+Create a PR when the work is complete.
+
 ## Required Checks
 
 Run all three before marking any task done. They are fast and non-destructive.
