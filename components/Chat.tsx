@@ -9,6 +9,7 @@ import {
 } from "react";
 import { marked } from "marked";
 import type { HistoryItem } from "@/types/chat";
+import Image from "next/image";
 import {
   MenuIcon,
   PanelLeftIcon,
@@ -591,14 +592,14 @@ function CompactionMarker({ done }: { done: boolean }) {
 function EmptyState({ cwd }: { cwd: string }) {
   return (
     <div className="empty">
-      <img
+      <Image
         className="empty-shield empty-shield--light"
         src="/logo-shield-light.png"
         alt=""
         width={72}
         height={72}
       />
-      <img
+      <Image
         className="empty-shield empty-shield--dark"
         src="/logo-shield-dark.png"
         alt=""
@@ -742,7 +743,6 @@ export default function Chat({ cwd }: { cwd: string }) {
     }
 
     init();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Hydrate widget state on mount so refreshes and cross-device loads restore the panel.
@@ -867,14 +867,14 @@ export default function Chat({ cwd }: { cwd: string }) {
           </button>
 
           <div className="tb-brand">
-            <img
+            <Image
               className="tb-shield tb-shield--light"
               src="/logo-shield-light.png"
               alt=""
               width={26}
               height={26}
             />
-            <img
+            <Image
               className="tb-shield tb-shield--dark"
               src="/logo-shield-dark.png"
               alt=""
