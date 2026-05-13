@@ -3,5 +3,6 @@
 
 export type HistoryItem =
   | { type: "user"; text: string }
+  | { type: "thinking"; text: string }
   | { type: "assistant_text"; text: string }
   | { type: "tool"; name: string; output: string; isError: boolean };

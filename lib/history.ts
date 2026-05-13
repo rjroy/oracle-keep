@@ -32,6 +32,8 @@ export function buildHistory(messages: AgentMessage[]): HistoryItem[] {
       for (const block of msg.content) {
         if (block.type === "text" && block.text.trim()) {
           items.push({ type: "assistant_text", text: block.text });
+        } else if (block.type === "thinking" && block.thinking.trim()) {
+          items.push({ type: "thinking", text: block.thinking });
         } else if (block.type === "toolCall") {
           const result = toolResults[block.id];
           const output = result
@@ -49,7 +51,7 @@ export function buildHistory(messages: AgentMessage[]): HistoryItem[] {
         }
       }
     }
-    // skip: toolResult, thinking, bashExecution, custom, branchSummary, compactionSummary
+    // skip: toolResult, bashExecution, custom, branchSummary, compactionSummary
   }
 
   return items;

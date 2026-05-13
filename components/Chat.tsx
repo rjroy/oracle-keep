@@ -60,6 +60,7 @@ type ToolEntry = {
 type Message =
   | { id: string; kind: "user"; text: string }
   | { id: string; kind: "assistant"; text: string; streaming: boolean }
+  | { id: string; kind: "thinking"; text: string; streaming: boolean; expanded: boolean }
   | { id: string; kind: "tool_group"; tools: ToolEntry[] }
   | { id: string; kind: "compaction"; done: boolean }
   | { id: string; kind: "error"; text: string };
@@ -75,6 +76,10 @@ type Action =
   | { type: "SET_TOOL_OUTPUT"; groupId: string; toolId: string; text: string }
   | { type: "FINALIZE_TOOL"; groupId: string; toolId: string; isError: boolean }
   | { type: "TOGGLE_TOOL"; groupId: string; toolId: string }
+  | { type: "ADD_THINKING"; id: string }
+  | { type: "APPEND_THINKING"; id: string; delta: string }
+  | { type: "FINALIZE_THINKING"; id: string }
+  | { type: "TOGGLE_THINKING"; id: string }
   | { type: "ADD_COMPACTION"; id: string }
   | { type: "FINALIZE_COMPACTION"; id: string }
   | { type: "REMOVE"; id: string }
@@ -158,6 +163,33 @@ function reducer(state: Message[], action: Action): Message[] {
           : m
       );
 
+    case "ADD_THINKING":
+      return [
+        ...state,
+        { id: action.id, kind: "thinking", text: "", streaming: true, expanded: false },
+      ];
+
+    case "APPEND_THINKING":
+      return state.map((m) =>
+        m.id === action.id && m.kind === "thinking"
+          ? { ...m, text: m.text + action.delta }
+          : m
+      );
+
+    case "FINALIZE_THINKING":
+      return state.map((m) =>
+        m.id === action.id && m.kind === "thinking"
+          ? { ...m, streaming: false }
+          : m
+      );
+
+    case "TOGGLE_THINKING":
+      return state.map((m) =>
+        m.id === action.id && m.kind === "thinking"
+          ? { ...m, expanded: !m.expanded }
+          : m
+      );
+
     case "ADD_COMPACTION":
       return [...state, { id: action.id, kind: "compaction", done: false }];
 
@@ -211,6 +243,15 @@ function historyToMessages(items: HistoryItem[]): Message[] {
     if (item.type === "user") {
       currentGroup = null;
       messages.push({ id: uid(), kind: "user", text: item.text });
+    } else if (item.type === "thinking") {
+      currentGroup = null;
+      messages.push({
+        id: uid(),
+        kind: "thinking",
+        text: item.text,
+        streaming: false,
+        expanded: false,
+      });
     } else if (item.type === "assistant_text") {
       currentGroup = null;
       messages.push({
@@ -248,6 +289,7 @@ type StreamHandlers = {
   setStatuses: React.Dispatch<React.SetStateAction<Map<string, string>>>;
   setWidgets: React.Dispatch<React.SetStateAction<Map<string, string[]>>>;
   assistantIdRef: React.MutableRefObject<string | null>;
+  thinkingIdRef: React.MutableRefObject<string | null>;
   toolGroupIdRef: React.MutableRefObject<string | null>;
   toolCallIdRef: React.MutableRefObject<string | null>;
   compactionIdRef: React.MutableRefObject<string | null>;
@@ -263,6 +305,7 @@ async function processEventStream(
     setStatuses,
     setWidgets,
     assistantIdRef,
+    thinkingIdRef,
     toolGroupIdRef,
     toolCallIdRef,
     compactionIdRef,
@@ -290,7 +333,25 @@ async function processEventStream(
       }
 
       switch (event.type) {
+        case "thinking": {
+          if (!thinkingIdRef.current) {
+            const id = uid();
+            thinkingIdRef.current = id;
+            dispatch({ type: "ADD_THINKING", id });
+          }
+          dispatch({
+            type: "APPEND_THINKING",
+            id: thinkingIdRef.current,
+            delta: event.delta as string,
+          });
+          break;
+        }
         case "text": {
+          // Finalize any in-progress thinking block before the assistant speaks.
+          if (thinkingIdRef.current) {
+            dispatch({ type: "FINALIZE_THINKING", id: thinkingIdRef.current });
+            thinkingIdRef.current = null;
+          }
           if (!assistantIdRef.current) {
             const id = uid();
             assistantIdRef.current = id;
@@ -365,6 +426,11 @@ async function processEventStream(
           break;
         }
         case "done": {
+          // Finalize thinking if it never transitioned to text (thinking-only turn).
+          if (thinkingIdRef.current) {
+            dispatch({ type: "FINALIZE_THINKING", id: thinkingIdRef.current });
+            thinkingIdRef.current = null;
+          }
           if (assistantIdRef.current) {
             dispatch({
               type: "FINALIZE_ASSISTANT",
@@ -475,6 +541,57 @@ function AssistantMessage({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ThinkingCard({
+  message,
+  onToggle,
+}: {
+  message: Message & { kind: "thinking" };
+  onToggle: () => void;
+}) {
+  const isOpen = message.expanded;
+  const wordCount = message.text.trim().split(/\s+/).filter(Boolean).length;
+  const summary = message.streaming
+    ? "reasoning…"
+    : wordCount > 0
+      ? `${wordCount} words`
+      : "no content";
+
+  return (
+    <div className={`thinking-card ${isOpen ? "is-open" : ""} ${message.streaming ? "is-active" : ""}`}>
+      <div
+        className="thinking-card-head"
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && onToggle()}
+      >
+        <div className="thinking-icon-wrap">✦</div>
+        <div className="tool-card-body-wrap">
+          <div className="tool-card-name">Thinking</div>
+          <div className="tool-card-sub">{summary}</div>
+        </div>
+        <span className={`tool-card-status ${message.streaming ? "pending" : "done"}`}>
+          {message.streaming ? "reasoning" : "complete"}
+        </span>
+        <ChevIcon size={14} className="tool-card-chev" />
+      </div>
+
+      {isOpen && (
+        <div className="tool-card-body">
+          {message.streaming && !message.text ? (
+            <div className="shimmer" />
+          ) : (
+            <>
+              <div className="tool-section-title">Reasoning trace</div>
+              <div className="tool-output thinking-output">{message.text}</div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -715,6 +832,7 @@ export default function Chat({ cwd }: { cwd: string }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Streaming state — refs avoid stale closures without triggering re-renders.
+  const currentThinkingId = useRef<string | null>(null);
   const currentAssistantId = useRef<string | null>(null);
   const currentToolGroupId = useRef<string | null>(null);
   const currentToolCallId = useRef<string | null>(null);
@@ -736,6 +854,7 @@ export default function Chat({ cwd }: { cwd: string }) {
       setStatuses,
       setWidgets,
       assistantIdRef: currentAssistantId,
+      thinkingIdRef: currentThinkingId,
       toolGroupIdRef: currentToolGroupId,
       toolCallIdRef: currentToolCallId,
       compactionIdRef: currentCompactionId,
@@ -830,6 +949,7 @@ export default function Chat({ cwd }: { cwd: string }) {
     requestAnimationFrame(resizeTextarea);
 
     // Reset streaming state.
+    currentThinkingId.current = null;
     currentAssistantId.current = null;
     currentToolGroupId.current = null;
     currentToolCallId.current = null;
@@ -860,6 +980,7 @@ export default function Chat({ cwd }: { cwd: string }) {
         setStatuses,
         setWidgets,
         assistantIdRef: currentAssistantId,
+        thinkingIdRef: currentThinkingId,
         toolGroupIdRef: currentToolGroupId,
         toolCallIdRef: currentToolCallId,
         compactionIdRef: currentCompactionId,
@@ -1029,6 +1150,16 @@ export default function Chat({ cwd }: { cwd: string }) {
 
               {messages.map((msg) => {
                 switch (msg.kind) {
+                  case "thinking":
+                    return (
+                      <ThinkingCard
+                        key={msg.id}
+                        message={msg}
+                        onToggle={() =>
+                          dispatch({ type: "TOGGLE_THINKING", id: msg.id })
+                        }
+                      />
+                    );
                   case "user":
                     return <UserMessage key={msg.id} text={msg.text} />;
                   case "assistant":

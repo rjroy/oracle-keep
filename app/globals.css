@@ -909,6 +909,69 @@ pre code { background: transparent; border: 0; color: inherit; padding: 0; }
   white-space: pre-wrap;
 }
 
+/* ── Thinking card ──────────────────────────────────────────────────────────── */
+
+.thinking-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--dur) var(--ease-out);
+  opacity: .85;
+}
+.thinking-card.is-active {
+  opacity: 1;
+  box-shadow: var(--shadow-sm), 0 0 0 1px var(--brass-300), var(--shadow-rune);
+}
+
+.thinking-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  background: var(--bg-raised);
+}
+.thinking-card-head:hover { background: var(--parchment-50); }
+[data-theme="dark"] .thinking-card-head:hover { background: var(--ink-800); }
+
+.thinking-icon-wrap {
+  width: 28px; height: 28px;
+  border-radius: var(--radius);
+  background: var(--parchment-200);
+  color: var(--brass-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--rule);
+  font-size: 13px;
+}
+[data-theme="dark"] .thinking-icon-wrap {
+  background: var(--ink-800);
+  color: var(--brass-300);
+  border-color: var(--rule);
+}
+.thinking-card.is-active .thinking-icon-wrap {
+  background: var(--warning-soft);
+  color: var(--brass-700);
+  border-color: var(--brass-300);
+}
+
+.thinking-card.is-open .tool-card-chev { transform: rotate(90deg); }
+
+.thinking-output {
+  max-height: 400px;
+  white-space: pre-wrap;
+  font-style: italic;
+  color: var(--parchment-100);
+}
+[data-theme="light"] .thinking-output {
+  background: var(--ink-900);
+  color: var(--parchment-100);
+}
+
 /* Shimmer while pending */
 .shimmer {
   height: 18px;

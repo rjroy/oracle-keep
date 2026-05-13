@@ -122,9 +122,16 @@ describe("buildHistory", () => {
     ]);
   });
 
-  test("thinking blocks in assistant message produce no items", () => {
+  test("thinking blocks in assistant message produce a thinking item", () => {
     const items = buildHistory([
       assistantMsg([{ type: "thinking", thinking: "internal thought" }]),
+    ]);
+    expect(items).toEqual([{ type: "thinking", text: "internal thought" }]);
+  });
+
+  test("thinking block with only whitespace is skipped", () => {
+    const items = buildHistory([
+      assistantMsg([{ type: "thinking", thinking: "   " }]),
     ]);
     expect(items).toEqual([]);
   });
@@ -145,12 +152,17 @@ describe("buildHistory", () => {
         { type: "toolCall", id: "c1", name: "calculate", arguments: {} },
       ]),
       toolResult("c1", ["4"]),
-      assistantMsg([{ type: "text", text: "The answer is 4." }]),
+      assistantMsg([
+        { type: "thinking", thinking: "got the result" },
+        { type: "text", text: "The answer is 4." },
+      ]),
     ];
     const items = buildHistory(messages);
     expect(items).toEqual([
       { type: "user", text: "what is 2+2?" },
+      { type: "thinking", text: "let me think" },
       { type: "tool", name: "calculate", output: "4", isError: false },
+      { type: "thinking", text: "got the result" },
       { type: "assistant_text", text: "The answer is 4." },
     ]);
   });
