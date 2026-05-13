@@ -1,0 +1,15 @@
+{
+  "name": "Oracle Keep",
+  "short_name": "Oracle Keep",
+  "display": "standalone",
+  "start_url": "/",
+  "background_color": "#0e0e10",
+  "theme_color": "#0e0e10",
+  "icons": [
+    {
+      "src": "/logo-shield-dark.png",
+      "sizes": "any",
+      "type": "image/png"
+    }
+  ]
+}

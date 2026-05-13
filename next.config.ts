@@ -4,6 +4,19 @@ const nextConfig: NextConfig = {
   // Keep the pi SDK out of the webpack bundle — it uses Node.js built-ins
   // that can't be bundled for the browser or Edge runtime.
   serverExternalPackages: ["@mariozechner/pi-coding-agent"],
+
+  // Prevent Safari Home Screen web apps from caching the HTML shell.
+  // Without this, Safari serves a stale document after deployments.
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
