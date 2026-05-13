@@ -95,9 +95,23 @@ export function createWebUIContext(getEnqueue: () => UIEnqueue | null): WebUICon
         // re-render on requestRender() calls.
         let entry: WidgetEntry | null = null;
 
+        // The factory receives this as the `tui` argument. Some components store it
+        // and call tui.terminal.columns (or other terminal methods) inside render().
+        // Provide a minimal terminal stub so those reads don't throw. Rendering and
+        // input operations are no-ops — there's no real terminal here.
         const mockTui = {
           requestRender() {
             if (entry) pushWidget(key, entry.render(WIDGET_RENDER_WIDTH));
+          },
+          terminal: {
+            columns: WIDGET_RENDER_WIDTH,
+            rows: 24,
+            write: () => {},
+            writeLine: () => {},
+            hideCursor: () => {},
+            showCursor: () => {},
+            start: () => {},
+            stop: () => {},
           },
         };
 
