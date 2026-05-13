@@ -31,7 +31,7 @@ export default function RootLayout({
     <html lang="en" data-theme="dark">
       <body>
         <SidebarProvider>
-          <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+          <div style={{ display: "flex", height: "100vh", overflow: "hidden", position: "relative" }}>
             <Sidebar />
             {children}
           </div>

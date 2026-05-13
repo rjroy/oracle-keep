@@ -316,14 +316,16 @@ pre code { background: transparent; border: 0; color: inherit; padding: 0; }
    APP SHELL
    ===================================================== */
 .app {
-  position: fixed;
-  inset: 0;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
   display: grid;
   grid-template-rows: 56px 1fr;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 1fr;
   grid-template-areas:
-    "topbar topbar"
-    "rail   stage";
+    "topbar"
+    "stage";
   background: transparent;
 }
 
@@ -422,8 +424,6 @@ pre code { background: transparent; border: 0; color: inherit; padding: 0; }
    ===================================================== */
 .rail {
   grid-area: rail;
-  position: relative;
-  z-index: 5;
   background: var(--parchment-50);
   border-right: 1px solid var(--rule);
   width: 280px;
