@@ -80,7 +80,6 @@ type Action =
   | { type: "ADD_ERROR"; id: string; text: string };
 
 // ── Reducer ────────────────────────────────────────────────────────────────────
-// Logic is unchanged from original — only the UI layer changed.
 
 function reducer(state: Message[], action: Action): Message[] {
   switch (action.type) {
@@ -236,6 +235,187 @@ function historyToMessages(items: HistoryItem[]): Message[] {
   }
 
   return messages;
+}
+
+// ── SSE stream processor ───────────────────────────────────────────────────────
+// Shared by sendMessage (POST) and the reconnect path (GET). Reads events from
+// `body` until the stream closes and dispatches them into the reducer.
+
+type StreamHandlers = {
+  dispatch: React.Dispatch<Action>;
+  setToasts: React.Dispatch<React.SetStateAction<Toast[]>>;
+  setStatuses: React.Dispatch<React.SetStateAction<Map<string, string>>>;
+  setWidgets: React.Dispatch<React.SetStateAction<Map<string, string[]>>>;
+  assistantIdRef: React.MutableRefObject<string | null>;
+  toolGroupIdRef: React.MutableRefObject<string | null>;
+  toolCallIdRef: React.MutableRefObject<string | null>;
+  compactionIdRef: React.MutableRefObject<string | null>;
+};
+
+async function processEventStream(
+  body: ReadableStream<Uint8Array>,
+  handlers: StreamHandlers,
+): Promise<void> {
+  const {
+    dispatch,
+    setToasts,
+    setStatuses,
+    setWidgets,
+    assistantIdRef,
+    toolGroupIdRef,
+    toolCallIdRef,
+    compactionIdRef,
+  } = handlers;
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop()!;
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      let event: Record<string, unknown>;
+      try {
+        event = JSON.parse(line.slice(6));
+      } catch {
+        continue;
+      }
+
+      switch (event.type) {
+        case "text": {
+          if (!assistantIdRef.current) {
+            const id = uid();
+            assistantIdRef.current = id;
+            toolGroupIdRef.current = null;
+            dispatch({ type: "ADD_ASSISTANT", id });
+          }
+          dispatch({
+            type: "APPEND_TEXT",
+            id: assistantIdRef.current,
+            delta: event.delta as string,
+          });
+          break;
+        }
+        case "tool_start": {
+          assistantIdRef.current = null;
+          if (!toolGroupIdRef.current) {
+            const id = uid();
+            toolGroupIdRef.current = id;
+            dispatch({ type: "ADD_TOOL_GROUP", id });
+          }
+          toolCallIdRef.current = event.id as string;
+          dispatch({
+            type: "ADD_TOOL",
+            groupId: toolGroupIdRef.current,
+            tool: {
+              id: event.id as string,
+              name: event.name as string,
+              label: (event.label as string) || (event.name as string),
+              output: "",
+              status: "running",
+              expanded: false,
+            },
+          });
+          break;
+        }
+        case "tool_update": {
+          if (toolGroupIdRef.current && toolCallIdRef.current) {
+            dispatch({
+              type: "SET_TOOL_OUTPUT",
+              groupId: toolGroupIdRef.current,
+              toolId: toolCallIdRef.current,
+              text: event.text as string,
+            });
+          }
+          break;
+        }
+        case "tool_end": {
+          if (toolGroupIdRef.current) {
+            dispatch({
+              type: "FINALIZE_TOOL",
+              groupId: toolGroupIdRef.current,
+              toolId: event.id as string,
+              isError: event.isError as boolean,
+            });
+          }
+          toolCallIdRef.current = null;
+          break;
+        }
+        case "compaction_start": {
+          const id = uid();
+          compactionIdRef.current = id;
+          dispatch({ type: "ADD_COMPACTION", id });
+          break;
+        }
+        case "compaction_end": {
+          if (compactionIdRef.current) {
+            const id = compactionIdRef.current;
+            dispatch({ type: "FINALIZE_COMPACTION", id });
+            setTimeout(() => dispatch({ type: "REMOVE", id }), 3000);
+            compactionIdRef.current = null;
+          }
+          break;
+        }
+        case "done": {
+          if (assistantIdRef.current) {
+            dispatch({
+              type: "FINALIZE_ASSISTANT",
+              id: assistantIdRef.current,
+            });
+          }
+          break;
+        }
+        case "notify": {
+          const id = uid();
+          const level = (event.level as Toast["level"]) ?? "info";
+          setToasts((prev) => [...prev, { id, message: event.message as string, level }]);
+          setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+          break;
+        }
+        case "status": {
+          const key = event.key as string;
+          const text = event.text as string | null;
+          setStatuses((prev) => {
+            const next = new Map(prev);
+            if (text == null) next.delete(key);
+            else next.set(key, text);
+            return next;
+          });
+          break;
+        }
+        case "widget": {
+          const key = event.key as string;
+          const lines = event.lines as string[] | null;
+          setWidgets((prev) => {
+            const next = new Map(prev);
+            if (lines == null) next.delete(key);
+            else next.set(key, lines);
+            return next;
+          });
+          break;
+        }
+        case "working_message":
+        case "working_visible":
+          // Acknowledged — no web equivalent yet.
+          break;
+        case "error": {
+          dispatch({
+            type: "ADD_ERROR",
+            id: uid(),
+            text: event.message as string,
+          });
+          break;
+        }
+      }
+    }
+  }
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -483,6 +663,7 @@ export default function Chat({ cwd }: { cwd: string }) {
   const [railCollapsed, setRailCollapsed] = useState(true);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [showResumeBanner, setShowResumeBanner] = useState(false);
+  const [showReconnectBanner, setShowReconnectBanner] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [statuses, setStatuses] = useState<Map<string, string>>(new Map());
   const [widgets, setWidgets] = useState<Map<string, string[]>>(new Map());
@@ -505,19 +686,63 @@ export default function Chat({ cwd }: { cwd: string }) {
     document.documentElement.setAttribute("data-theme", next);
   }, [theme]);
 
-  // Load history on mount.
+  // Load history on mount, then check whether the agent is mid-turn.
+  // If it is, open a GET /api/chat SSE stream to receive the buffered + live events.
   useEffect(() => {
-    fetch("/api/history")
-      .then((r) => r.json())
-      .then(({ items }: { items: HistoryItem[] }) => {
+    const streamHandlers = (): StreamHandlers => ({
+      dispatch,
+      setToasts,
+      setStatuses,
+      setWidgets,
+      assistantIdRef: currentAssistantId,
+      toolGroupIdRef: currentToolGroupId,
+      toolCallIdRef: currentToolCallId,
+      compactionIdRef: currentCompactionId,
+    });
+
+    async function init() {
+      // Load conversation history.
+      try {
+        const r = await fetch("/api/history");
+        const { items }: { items: HistoryItem[] } = await r.json();
         if (items?.length > 0) {
-          const msgs = historyToMessages(items);
-          dispatch({ type: "HISTORY_LOADED", messages: msgs });
+          dispatch({ type: "HISTORY_LOADED", messages: historyToMessages(items) });
           setShowResumeBanner(true);
         }
-        setHistoryLoaded(true);
-      })
-      .catch(() => setHistoryLoaded(true));
+      } catch {
+        // History load failure is non-fatal.
+      }
+
+      setHistoryLoaded(true);
+
+      // Check whether the agent is already processing (page was closed mid-turn).
+      try {
+        const statusRes = await fetch("/api/status");
+        const { isProcessing } = await statusRes.json();
+        if (!isProcessing) return;
+
+        // Agent is still running — reconnect to its event stream.
+        setBusy(true);
+        setShowResumeBanner(false);
+        setShowReconnectBanner(true);
+        currentAssistantId.current = null;
+        currentToolGroupId.current = null;
+        currentToolCallId.current = null;
+        currentCompactionId.current = null;
+
+        const reconnect = await fetch("/api/chat");
+        if (reconnect.ok && reconnect.body) {
+          await processEventStream(reconnect.body, streamHandlers());
+        }
+      } catch {
+        // Reconnect failure is non-fatal — the user can send a new message.
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    init();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Hydrate widget state on mount so refreshes and cross-device loads restore the panel.
@@ -589,156 +814,16 @@ export default function Chat({ cwd }: { cwd: string }) {
         return;
       }
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split("\n");
-        buffer = lines.pop()!;
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          let event: Record<string, unknown>;
-          try {
-            event = JSON.parse(line.slice(6));
-          } catch {
-            continue;
-          }
-
-          switch (event.type) {
-            case "text": {
-              if (!currentAssistantId.current) {
-                const id = uid();
-                currentAssistantId.current = id;
-                currentToolGroupId.current = null;
-                dispatch({ type: "ADD_ASSISTANT", id });
-              }
-              dispatch({
-                type: "APPEND_TEXT",
-                id: currentAssistantId.current,
-                delta: event.delta as string,
-              });
-              break;
-            }
-            case "tool_start": {
-              currentAssistantId.current = null;
-              if (!currentToolGroupId.current) {
-                const id = uid();
-                currentToolGroupId.current = id;
-                dispatch({ type: "ADD_TOOL_GROUP", id });
-              }
-              currentToolCallId.current = event.id as string;
-              dispatch({
-                type: "ADD_TOOL",
-                groupId: currentToolGroupId.current,
-                tool: {
-                  id: event.id as string,
-                  name: event.name as string,
-                  label: (event.label as string) || (event.name as string),
-                  output: "",
-                  status: "running",
-                  expanded: false,
-                },
-              });
-              break;
-            }
-            case "tool_update": {
-              if (currentToolGroupId.current && currentToolCallId.current) {
-                dispatch({
-                  type: "SET_TOOL_OUTPUT",
-                  groupId: currentToolGroupId.current,
-                  toolId: currentToolCallId.current,
-                  text: event.text as string,
-                });
-              }
-              break;
-            }
-            case "tool_end": {
-              if (currentToolGroupId.current) {
-                dispatch({
-                  type: "FINALIZE_TOOL",
-                  groupId: currentToolGroupId.current,
-                  toolId: event.id as string,
-                  isError: event.isError as boolean,
-                });
-              }
-              currentToolCallId.current = null;
-              break;
-            }
-            case "compaction_start": {
-              const id = uid();
-              currentCompactionId.current = id;
-              dispatch({ type: "ADD_COMPACTION", id });
-              break;
-            }
-            case "compaction_end": {
-              if (currentCompactionId.current) {
-                const id = currentCompactionId.current;
-                dispatch({ type: "FINALIZE_COMPACTION", id });
-                // Remove the banner after 3 seconds — the archive marker replaces it.
-                setTimeout(() => dispatch({ type: "REMOVE", id }), 3000);
-                currentCompactionId.current = null;
-              }
-              break;
-            }
-            case "done": {
-              if (currentAssistantId.current) {
-                dispatch({
-                  type: "FINALIZE_ASSISTANT",
-                  id: currentAssistantId.current,
-                });
-              }
-              break;
-            }
-            case "notify": {
-              const id = uid();
-              const level = (event.level as Toast["level"]) ?? "info";
-              setToasts((prev) => [...prev, { id, message: event.message as string, level }]);
-              setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
-              break;
-            }
-            case "status": {
-              const key = event.key as string;
-              const text = event.text as string | null;
-              setStatuses((prev) => {
-                const next = new Map(prev);
-                if (text == null) next.delete(key);
-                else next.set(key, text);
-                return next;
-              });
-              break;
-            }
-            case "widget": {
-              const key = event.key as string;
-              const lines = event.lines as string[] | null;
-              setWidgets((prev) => {
-                const next = new Map(prev);
-                if (lines == null) next.delete(key);
-                else next.set(key, lines);
-                return next;
-              });
-              break;
-            }
-            case "working_message":
-            case "working_visible":
-              // Acknowledged — no web equivalent yet.
-              break;
-            case "error": {
-              dispatch({
-                type: "ADD_ERROR",
-                id: uid(),
-                text: event.message as string,
-              });
-              break;
-            }
-          }
-        }
-      }
+      await processEventStream(res.body!, {
+        dispatch,
+        setToasts,
+        setStatuses,
+        setWidgets,
+        assistantIdRef: currentAssistantId,
+        toolGroupIdRef: currentToolGroupId,
+        toolCallIdRef: currentToolCallId,
+        compactionIdRef: currentCompactionId,
+      });
     } catch (err) {
       dispatch({
         type: "ADD_ERROR",
@@ -885,6 +970,16 @@ export default function Chat({ cwd }: { cwd: string }) {
                 Welcome back. Your consultation resumed where you left off.
               </span>
               <button onClick={() => setShowResumeBanner(false)}>Dismiss</button>
+            </div>
+          )}
+
+          {showReconnectBanner && (
+            <div className="resume-banner">
+              <LanternIcon size={16} className="lantern-icon" />
+              <span>
+                The Oracle kept working while you were away. Catching up now…
+              </span>
+              <button onClick={() => setShowReconnectBanner(false)}>Dismiss</button>
             </div>
           )}
 

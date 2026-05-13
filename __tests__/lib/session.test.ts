@@ -16,31 +16,37 @@ mock.module("@mariozechner/pi-coding-agent", () => ({
 import {
   isProcessing,
   setProcessing,
-  setEnqueue,
-  clearEnqueue,
+  broadcastEvent,
+  addSubscriber,
+  removeSubscriber,
+  getEventBuffer,
+  clearEventBuffer,
   getSession,
 } from "../../lib/session";
+import type { BufferedEvent } from "../../lib/session";
 
-// ── Reset globalThis.__oracleKeep before each test ────────────────────────────
-// This gives each test an isolated, predictable starting state.
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 type OracleKeep = {
   sessionPromise: Promise<unknown>;
   isProcessing: boolean;
-  enqueue: ((type: string, data?: Record<string, unknown>) => void) | null;
+  eventBuffer: BufferedEvent[];
+  subscribers: Map<string, (type: string, data?: Record<string, unknown>) => void>;
 };
 
 function installFakeKeep(overrides: Partial<OracleKeep> = {}): OracleKeep {
   const fakeKeep: OracleKeep = {
     sessionPromise: Promise.resolve({}),
     isProcessing: false,
-    enqueue: null,
+    eventBuffer: [],
+    subscribers: new Map(),
     ...overrides,
   };
   (globalThis as { __oracleKeep?: OracleKeep }).__oracleKeep = fakeKeep;
   return fakeKeep;
 }
 
+// ── Reset globalThis.__oracleKeep before each test ────────────────────────────
 beforeEach(() => {
   installFakeKeep();
 });
@@ -71,37 +77,83 @@ describe("isProcessing / setProcessing", () => {
   });
 });
 
-// ── setEnqueue / clearEnqueue ─────────────────────────────────────────────────
+// ── eventBuffer ───────────────────────────────────────────────────────────────
 
-describe("setEnqueue / clearEnqueue", () => {
-  test("setEnqueue stores the function on the singleton", () => {
-    const fn = () => {};
-    setEnqueue(fn);
-    const keep = (globalThis as { __oracleKeep: OracleKeep }).__oracleKeep;
-    expect(keep.enqueue).toBe(fn);
+describe("eventBuffer", () => {
+  test("getEventBuffer returns empty array initially", () => {
+    expect(getEventBuffer()).toEqual([]);
   });
 
-  test("clearEnqueue sets enqueue to null", () => {
-    const fn = () => {};
-    setEnqueue(fn);
-    clearEnqueue();
-    const keep = (globalThis as { __oracleKeep: OracleKeep }).__oracleKeep;
-    expect(keep.enqueue).toBeNull();
+  test("broadcastEvent appends to the buffer", () => {
+    broadcastEvent("text", { delta: "hello" });
+    expect(getEventBuffer()).toEqual([{ type: "text", data: { delta: "hello" } }]);
   });
 
-  test("clearEnqueue is safe when enqueue is already null", () => {
-    expect(() => clearEnqueue()).not.toThrow();
-    const keep = (globalThis as { __oracleKeep: OracleKeep }).__oracleKeep;
-    expect(keep.enqueue).toBeNull();
+  test("broadcastEvent defaults data to empty object", () => {
+    broadcastEvent("done");
+    expect(getEventBuffer()).toEqual([{ type: "done", data: {} }]);
   });
 
-  test("replacing enqueue with a new function updates the reference", () => {
-    const fn1 = () => {};
-    const fn2 = () => {};
-    setEnqueue(fn1);
-    setEnqueue(fn2);
-    const keep = (globalThis as { __oracleKeep: OracleKeep }).__oracleKeep;
-    expect(keep.enqueue).toBe(fn2);
+  test("getEventBuffer returns a snapshot, not a live reference", () => {
+    const snapshot = getEventBuffer();
+    broadcastEvent("text", { delta: "x" });
+    expect(snapshot).toHaveLength(0);
+    expect(getEventBuffer()).toHaveLength(1);
+  });
+
+  test("clearEventBuffer empties the buffer", () => {
+    broadcastEvent("text", { delta: "a" });
+    broadcastEvent("done");
+    clearEventBuffer();
+    expect(getEventBuffer()).toEqual([]);
+  });
+
+  test("clearEventBuffer is safe when buffer is already empty", () => {
+    expect(() => clearEventBuffer()).not.toThrow();
+    expect(getEventBuffer()).toEqual([]);
+  });
+});
+
+// ── subscribers ───────────────────────────────────────────────────────────────
+
+describe("addSubscriber / removeSubscriber / broadcastEvent dispatch", () => {
+  test("broadcastEvent calls all registered subscribers", () => {
+    const received1: Array<[string, Record<string, unknown>]> = [];
+    const received2: Array<[string, Record<string, unknown>]> = [];
+
+    addSubscriber("a", (type, data = {}) => received1.push([type, data]));
+    addSubscriber("b", (type, data = {}) => received2.push([type, data]));
+
+    broadcastEvent("text", { delta: "hi" });
+
+    expect(received1).toEqual([["text", { delta: "hi" }]]);
+    expect(received2).toEqual([["text", { delta: "hi" }]]);
+  });
+
+  test("removeSubscriber stops the subscriber from receiving events", () => {
+    const received: string[] = [];
+    addSubscriber("s", (type) => received.push(type));
+    broadcastEvent("text");
+    removeSubscriber("s");
+    broadcastEvent("done");
+
+    expect(received).toEqual(["text"]);
+  });
+
+  test("removeSubscriber is safe when id was never registered", () => {
+    expect(() => removeSubscriber("nonexistent")).not.toThrow();
+  });
+
+  test("replacing a subscriber id updates the reference", () => {
+    const received: string[] = [];
+    addSubscriber("x", () => received.push("first"));
+    addSubscriber("x", () => received.push("second"));
+    broadcastEvent("ping");
+    expect(received).toEqual(["second"]);
+  });
+
+  test("broadcastEvent with no subscribers is safe", () => {
+    expect(() => broadcastEvent("done")).not.toThrow();
   });
 });
 
