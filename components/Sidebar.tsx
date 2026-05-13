@@ -188,7 +188,49 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
       </div>
       {!collapsed && <div className="rail-eyebrow">Sessions</div>}
 
-      {!collapsed && <div className="rail-scroll">
+      <div className="rail-scroll">
+        {collapsed ? (
+          // Collapsed: show avatar per session, centered in the 64px strip
+          sessions.map((entry) => (
+            <button
+              key={entry.id}
+              title={entry.label}
+              onClick={() => router.push(`/s/${entry.id}`)}
+              style={{
+                position: "relative",
+                width: 32,
+                height: 32,
+                borderRadius: "9999px",
+                border: entry.id === activeSessionId ? "2px solid var(--brand)" : "1px solid var(--rule)",
+                background: entry.id === activeSessionId ? "var(--brand-soft)" : "var(--bg)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontFamily: "var(--font-display)",
+                fontSize: "12px",
+                color: "var(--fg-1)",
+                flexShrink: 0,
+                padding: 0,
+              }}
+            >
+              {entry.label.charAt(0).toUpperCase()}
+              {entry.isProcessing && (
+                <span style={{
+                  position: "absolute",
+                  top: -2,
+                  right: -2,
+                  width: 8,
+                  height: 8,
+                  borderRadius: "9999px",
+                  background: "var(--brand)",
+                  animation: "flicker 1.5s ease-in-out infinite",
+                }} />
+              )}
+            </button>
+          ))
+        ) : (
+          <>
         {sessions.length === 0 && (
           <p
             style={{
@@ -328,13 +370,39 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
             </span>
           </div>
         ))}
-      </div>}
+          </>
+        )}
+      </div>
 
       <div
         className="rail-foot"
         style={{ flexDirection: "column", alignItems: "stretch" }}
       >
-        {addingSession ? (
+        {collapsed ? (
+          // Collapsed footer: just a + button centered
+          <button
+            title="Add session"
+            aria-label="Add session"
+            onClick={() => { toggle(); setTimeout(() => setAddingSession(true), 150); }}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "9999px",
+              border: "1px dashed var(--rule)",
+              background: "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--fg-3)",
+              fontSize: "18px",
+              alignSelf: "center",
+              padding: 0,
+            }}
+          >
+            +
+          </button>
+        ) : addingSession ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <input
               ref={addInputRef}
