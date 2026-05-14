@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import type { SessionListItem, SessionRecord } from "@/types/session";
-import { PanelLeftIcon } from "@/components/icons";
+import { PanelLeftIcon, PencilIcon } from "@/components/icons";
 import { useSidebar } from "@/components/sidebar-context";
 
 const POLL_INTERVAL_MS = 10_000;
@@ -15,6 +15,7 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
   const { collapsed, toggle } = useSidebar();
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [addingSession, setAddingSession] = useState(false);
   const [addValue, setAddValue] = useState("");
@@ -78,6 +79,7 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
   }, [addingSession]);
 
   function startRename(entry: SessionListItem) {
+    setConfirmingId(null);
     setRenamingId(entry.id);
     setRenameValue(entry.label);
   }
@@ -256,7 +258,7 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
                 : undefined
             }
             onClick={() => {
-              if (renamingId !== entry.id) {
+              if (renamingId !== entry.id && confirmingId !== entry.id) {
                 router.push(`/s/${entry.id}`);
               }
             }}
@@ -300,16 +302,6 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
                 />
               ) : (
                 <span
-                  role="button"
-                  tabIndex={0}
-                  title="Click to rename"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") startRename(entry);
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    startRename(entry);
-                  }}
                   style={{
                     flex: 1,
                     minWidth: 0,
@@ -319,11 +311,43 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
                     fontFamily: "var(--font-serif)",
                     fontSize: "var(--text-sm)",
                     color: "var(--fg-1)",
-                    cursor: "text",
                   }}
                 >
                   {entry.label}
                 </span>
+              )}
+
+              {renamingId !== entry.id && (
+                <button
+                  aria-label={`Rename session ${entry.label}`}
+                  title="Rename session"
+                  className="rail-edit-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startRename(entry);
+                  }}
+                  style={{
+                    flexShrink: 0,
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--fg-3)",
+                    padding: "0 2px",
+                    lineHeight: "1",
+                    borderRadius: "var(--radius-sm)",
+                    transition: "color var(--dur) var(--ease-out)",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.color = "var(--brand)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLButtonElement).style.color = "var(--fg-3)";
+                  }}
+                >
+                  <PencilIcon size={12} />
+                </button>
               )}
 
               <button
@@ -331,7 +355,7 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
                 title="Forget session"
                 onClick={(e) => {
                   e.stopPropagation();
-                  forgetSession(entry);
+                  setConfirmingId(entry.id);
                 }}
                 style={{
                   flexShrink: 0,
@@ -355,6 +379,63 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
                 ×
               </button>
             </div>
+
+            {confirmingId === entry.id && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  paddingTop: "6px",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span
+                  style={{
+                    flex: 1,
+                    fontSize: "var(--text-sm)",
+                    color: "var(--danger)",
+                    fontFamily: "var(--font-serif)",
+                  }}
+                >
+                  Remove session?
+                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmingId(null); }}
+                  style={{
+                    flexShrink: 0,
+                    background: "transparent",
+                    border: "1px solid var(--rule)",
+                    borderRadius: "var(--radius-sm)",
+                    cursor: "pointer",
+                    color: "var(--fg-2)",
+                    fontSize: "var(--text-sm)",
+                    fontFamily: "var(--font-serif)",
+                    padding: "2px 8px",
+                    lineHeight: "1.4",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmingId(null); forgetSession(entry); }}
+                  style={{
+                    flexShrink: 0,
+                    background: "var(--danger)",
+                    border: "1px solid var(--danger)",
+                    borderRadius: "var(--radius-sm)",
+                    cursor: "pointer",
+                    color: "#fff",
+                    fontSize: "var(--text-sm)",
+                    fontFamily: "var(--font-serif)",
+                    padding: "2px 8px",
+                    lineHeight: "1.4",
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+            )}
 
             <span
               style={{

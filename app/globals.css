@@ -490,6 +490,14 @@ pre code { background: transparent; border: 0; color: inherit; padding: 0; }
 .scroll-item:hover { background: var(--parchment-200); }
 [data-theme="dark"] .scroll-item:hover { background: var(--bg-sunken); }
 
+/* Pencil edit button: hidden by default on hover-capable devices,
+   revealed on row hover. Always visible on touch-only devices. */
+@media (hover: hover) {
+  .rail-edit-btn { opacity: 0; }
+  .scroll-item:hover .rail-edit-btn,
+  .scroll-item:focus-within .rail-edit-btn { opacity: 1; }
+}
+
 .rail-foot {
   padding: 10px 12px;
   border-top: 1px solid var(--rule-soft);
