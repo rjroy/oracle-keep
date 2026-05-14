@@ -1,3 +1,8 @@
+// Shared session types — used by both server (lib/) and client (components/).
+// No SDK imports — this file must be safe to import on either side.
+
+// ── Registry types ────────────────────────────────────────────────────────────
+
 export type SessionRecord = {
   id: string;
   cwd: string;
@@ -11,3 +16,24 @@ export type SessionRegistry = {
 };
 
 export type SessionListItem = SessionRecord & { isProcessing: boolean };
+
+// ── Session metadata (Oracle Keep extension → client) ─────────────────────────
+
+/** A single slash command surfaced from the pi session. */
+export type CommandEntry = {
+  name: string;
+  description: string;
+  /** Where the command came from. */
+  source: "extension" | "prompt" | "skill";
+};
+
+/**
+ * Live metadata about a session that the Oracle Keep extension discovers and
+ * the server makes available to the client.
+ *
+ * Add new fields here as the extension-to-client channel grows. The /meta
+ * endpoint returns the whole object, so clients get new fields automatically.
+ */
+export type SessionMeta = {
+  commands: CommandEntry[];
+};
