@@ -1219,10 +1219,10 @@ pre code { background: transparent; border: 0; color: inherit; padding: 0; }
 .slash-item-name {
   font-family: var(--font-mono, monospace);
   font-size: 0.82rem;
-  color: var(--ember-400);
+  color: var(--ember-300);
   font-weight: 600;
 }
-[data-theme="light"] .slash-item-name { color: var(--ember-600); }
+[data-theme="light"] .slash-item-name { color: var(--ember-500); }
 .slash-item-desc {
   font-size: 0.78rem;
   color: var(--fg-muted);

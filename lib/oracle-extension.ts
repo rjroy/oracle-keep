@@ -34,11 +34,20 @@ export function createOracleExtension(onMeta: MetaCallback): ExtensionFactory {
     // pi.getCommands() returns the complete list including compactor and
     // any other loaded extension commands.
     pi.on("session_start", async () => {
-      const commands: CommandEntry[] = pi.getCommands().map((c) => ({
-        name: c.name,
-        description: c.description ?? "",
-        source: c.source,
-      }));
+      const commands: CommandEntry[] = [
+        ...pi.getCommands().map((c) => ({
+          name: c.name,
+          description: c.description ?? "",
+          source: c.source,
+        })),
+        // Oracle Keep app-level commands not registered through pi's extension
+        // system. These are handled directly in the API route.
+        {
+          name: "new",
+          description: "Start a fresh consultation",
+          source: "oracle-keep" as const,
+        },
+      ];
       onMeta({ commands });
     });
 

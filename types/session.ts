@@ -24,7 +24,7 @@ export type CommandEntry = {
   name: string;
   description: string;
   /** Where the command came from. */
-  source: "extension" | "prompt" | "skill";
+  source: "extension" | "prompt" | "skill" | "oracle-keep";
 };
 
 /**

@@ -51,7 +51,8 @@ describe("createOracleExtension", () => {
 
     expect(received).toHaveLength(1);
     const [update] = received[0];
-    expect(update.commands).toHaveLength(2);
+    // 2 pi commands + the built-in /new command = 3 total
+    expect(update.commands).toHaveLength(3);
     expect(update.commands![0]).toEqual({
       name: "unipi:lossless-compact",
       description: "Immediate compaction",
@@ -85,7 +86,8 @@ describe("createOracleExtension", () => {
     await pi.emit("session_start");
 
     const cmds = received[0][0].commands!;
-    expect(cmds.map((c) => c.source)).toEqual(["prompt", "skill", "extension"]);
+    // pi commands come first, then the oracle-keep built-ins
+    expect(cmds.map((c) => c.source)).toEqual(["prompt", "skill", "extension", "oracle-keep"]);
   });
 
   test("calls onMeta with empty commands when no commands are registered", async () => {
@@ -96,7 +98,10 @@ describe("createOracleExtension", () => {
     factory(pi as never);
     await pi.emit("session_start");
 
-    expect(received[0][0].commands).toEqual([]);
+    // /new is always appended even when no pi commands are registered
+    expect(received[0][0].commands).toEqual([
+      { name: "new", description: "Start a fresh consultation", source: "oracle-keep" },
+    ]);
   });
 
   test("onMeta is not called before session_start fires", () => {
