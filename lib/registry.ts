@@ -116,3 +116,21 @@ export async function findSession(id: string, fs?: FsLike): Promise<SessionRecor
   const registry = await getRegistry(fs);
   return registry.sessions.find((s) => s.id === id);
 }
+
+/**
+ * Record the pi .jsonl path for a session so it can be reopened by path on
+ * restart, rather than relying on continueRecent() which would pick up any
+ * newer session file created in the same cwd.
+ */
+export async function setSessionFile(
+  id: string,
+  sessionFile: string,
+  fs?: FsLike,
+): Promise<void> {
+  const registry = await getRegistry(fs);
+  const index = registry.sessions.findIndex((s) => s.id === id);
+  if (index === -1) return;
+  const sessions = [...registry.sessions];
+  sessions[index] = { ...sessions[index], sessionFile };
+  await saveRegistry({ sessions }, fs);
+}

@@ -4,6 +4,7 @@ import {
   forgetSession,
   updateLabel,
   findSession,
+  setSessionFile,
   getRegistry,
   saveRegistry,
   type FsLike,
@@ -243,5 +244,40 @@ describe("getRegistry / saveRegistry round-trip", () => {
     const registry = await getRegistry(fs);
     expect(registry.sessions).toHaveLength(1);
     expect(registry.sessions[0].id).toBe("new");
+  });
+});
+
+describe("setSessionFile", () => {
+  beforeEach(() => { globalThis.__oracleKeepRegistry = undefined; });
+
+  test("writes sessionFile onto the matching registry entry", async () => {
+    const fs = makeFs();
+    const record = await addSession("/some/path", fs);
+
+    await setSessionFile(record.id, "/home/.pi/agent/sessions/path/session.jsonl", fs);
+
+    const updated = await findSession(record.id, fs);
+    expect(updated?.sessionFile).toBe("/home/.pi/agent/sessions/path/session.jsonl");
+  });
+
+  test("no-op when id does not exist", async () => {
+    const fs = makeFs();
+    await addSession("/some/path", fs);
+
+    // Should not throw and registry should be unchanged
+    await expect(setSessionFile("nonexistent", "/some/file.jsonl", fs)).resolves.toBeUndefined();
+    const registry = await getRegistry(fs);
+    expect(registry.sessions.every((s) => s.sessionFile === undefined)).toBe(true);
+  });
+
+  test("persists through a registry reload", async () => {
+    const fs = makeFs();
+    const record = await addSession("/some/path", fs);
+    await setSessionFile(record.id, "/pinned/session.jsonl", fs);
+
+    // Clear singleton to force a reload from the fake fs
+    globalThis.__oracleKeepRegistry = undefined;
+    const reloaded = await findSession(record.id, fs);
+    expect(reloaded?.sessionFile).toBe("/pinned/session.jsonl");
   });
 });

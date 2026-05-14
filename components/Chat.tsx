@@ -8,6 +8,7 @@ import {
   useCallback,
 } from "react";
 import { marked } from "marked";
+import { useRouter } from "next/navigation";
 import type { HistoryItem } from "@/types/chat";
 import Image from "next/image";
 import {
@@ -293,6 +294,7 @@ type StreamHandlers = {
   toolGroupIdRef: React.MutableRefObject<string | null>;
   toolCallIdRef: React.MutableRefObject<string | null>;
   compactionIdRef: React.MutableRefObject<string | null>;
+  onNavigate?: (url: string) => void;
 };
 
 async function processEventStream(
@@ -430,6 +432,10 @@ async function processEventStream(
             setTimeout(() => dispatch({ type: "REMOVE", id }), 3000);
             compactionIdRef.current = null;
           }
+          break;
+        }
+        case "navigate": {
+          handlers.onNavigate?.(event.url as string);
           break;
         }
         case "done": {
@@ -795,6 +801,7 @@ function WidgetPanel({ widgets }: { widgets: Map<string, string[]> }) {
 // ── Chat ───────────────────────────────────────────────────────────────────────
 
 export default function Chat({ sessionId }: { sessionId: string }) {
+  const router = useRouter();
   const { toggle: toggleSidebar } = useSidebar();
   const [messages, dispatch] = useReducer(reducer, []);
   const [input, setInput] = useState("");
@@ -838,6 +845,7 @@ export default function Chat({ sessionId }: { sessionId: string }) {
       toolGroupIdRef: currentToolGroupId,
       toolCallIdRef: currentToolCallId,
       compactionIdRef: currentCompactionId,
+      onNavigate: (url: string) => router.push(url),
     });
 
     async function init() {
@@ -880,7 +888,7 @@ export default function Chat({ sessionId }: { sessionId: string }) {
     }
 
     init();
-  }, [sessionId]);
+  }, [sessionId, router]);
 
   // Hydrate widget state on mount so refreshes and cross-device loads restore the panel.
   useEffect(() => {
@@ -962,6 +970,7 @@ export default function Chat({ sessionId }: { sessionId: string }) {
         toolGroupIdRef: currentToolGroupId,
         toolCallIdRef: currentToolCallId,
         compactionIdRef: currentCompactionId,
+        onNavigate: (url: string) => router.push(url),
       });
     } catch (err) {
       dispatch({
@@ -973,7 +982,7 @@ export default function Chat({ sessionId }: { sessionId: string }) {
       setBusy(false);
       textareaRef.current?.focus();
     }
-  }, [sessionId, input, busy, resizeTextarea]);
+  }, [sessionId, router, input, busy, resizeTextarea]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
