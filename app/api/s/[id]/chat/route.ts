@@ -8,7 +8,7 @@ import {
   getEventBufferForSession,
   clearEventBufferForSession,
 } from "@/lib/session";
-import { findSession } from "@/lib/registry";
+import { findSession, addSession } from "@/lib/registry";
 
 export const dynamic = "force-dynamic";
 
@@ -117,7 +117,25 @@ export async function POST(
     );
   }
 
-  const session = await getSession(id, record.cwd);
+  // ── Slash commands ────────────────────────────────────────────────────────
+  // Handled before touching the agent — these are UI-level commands, not
+  // messages to be sent to the LLM.
+  if (message.trim() === "/new") {
+    const newRecord = await addSession(record.cwd);
+    // Pre-warm the new session with fresh:true so it creates a new .jsonl
+    // rather than continuing the most recent one.
+    getSession(newRecord.id, newRecord.cwd, { fresh: true }).catch(() => {});
+    // Single-event stream: tell the client to navigate, then close.
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encode("navigate", { url: `/s/${newRecord.id}` }));
+        controller.close();
+      },
+    });
+    return new Response(stream, { headers: sseHeaders });
+  }
+
+  const session = await getSession(id, record.cwd, { sessionFile: record.sessionFile });
 
   // Prepare a fresh turn: mark busy and clear the previous turn's buffer.
   setProcessingSession(id, true);

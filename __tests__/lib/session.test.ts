@@ -1,5 +1,10 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 
+// Spy handles — reassigned before each test that cares, readable in assertions.
+const continueRecentSpy = mock(() => ({}));
+const createSpy = mock(() => ({}));
+const openSpy = mock((_path: string) => ({}));
+
 // Mock the SDK before any imports that pull in session.ts.
 // Bun hoists mock.module() calls so the mock is in place when session.ts loads.
 mock.module("@mariozechner/pi-coding-agent", () => ({
@@ -10,7 +15,11 @@ mock.module("@mariozechner/pi-coding-agent", () => ({
     },
     modelFallbackMessage: null,
   }),
-  SessionManager: { continueRecent: () => ({}) },
+  SessionManager: {
+    continueRecent: continueRecentSpy,
+    create: createSpy,
+    open: openSpy,
+  },
 }));
 
 import {
@@ -50,6 +59,30 @@ describe("getSession", () => {
   test("resolves to the mocked agent session", async () => {
     const session = await getSession("sess-init", "/some/path");
     expect(session).toBeDefined();
+  });
+
+  test("uses SessionManager.continueRecent by default", async () => {
+    continueRecentSpy.mockClear(); createSpy.mockClear(); openSpy.mockClear();
+    await getSession("sess-default", "/path/default");
+    expect(continueRecentSpy).toHaveBeenCalledWith("/path/default");
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  test("uses SessionManager.create when fresh:true", async () => {
+    continueRecentSpy.mockClear(); createSpy.mockClear(); openSpy.mockClear();
+    await getSession("sess-fresh", "/path/fresh", { fresh: true });
+    expect(createSpy).toHaveBeenCalledWith("/path/fresh");
+    expect(continueRecentSpy).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  test("uses SessionManager.open when sessionFile is provided", async () => {
+    continueRecentSpy.mockClear(); createSpy.mockClear(); openSpy.mockClear();
+    await getSession("sess-pinned", "/path/pinned", { sessionFile: "/some/file.jsonl" });
+    expect(openSpy).toHaveBeenCalledWith("/some/file.jsonl");
+    expect(continueRecentSpy).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
   });
 });
 

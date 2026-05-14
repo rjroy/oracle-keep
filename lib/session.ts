@@ -1,6 +1,7 @@
 import { createAgentSession, SessionManager } from "@mariozechner/pi-coding-agent";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { createWebUIContext, type UIEnqueue, type WebUIContext } from "./ui-context";
+import { setSessionFile } from "./registry";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -31,28 +32,45 @@ function getSessionsMap(): Map<string, SessionState> {
 
 // ── Session init ───────────────────────────────────────────────────────────────
 
-function createSessionState(id: string, cwd: string): SessionState {
+function createSessionState(
+  id: string,
+  cwd: string,
+  opts: { fresh?: boolean; sessionFile?: string } = {},
+): SessionState {
   console.log("\n  Oracle Keep");
   console.log(`  Session          : ${id}`);
   console.log(`  Working directory: ${cwd}`);
   console.log("  Starting agent session…\n");
 
-  // uiContext is created before state is stored in the map because the
-  // broadcastEventToSession closure captures `id` directly — no circular
-  // reference through the map entry itself.
   const uiContext = createWebUIContext(
     () => (type: string, data: Record<string, unknown> = {}) =>
       broadcastEventToSession(id, type, data),
   );
 
+  // Pick the right SessionManager strategy:
+  //   - pinned path  → open that specific file (survives restarts correctly)
+  //   - fresh        → create a new file (for /new)
+  //   - otherwise    → continue the most recent file
+  let manager: SessionManager;
+  if (opts.sessionFile) {
+    manager = SessionManager.open(opts.sessionFile);
+  } else if (opts.fresh) {
+    manager = SessionManager.create(cwd);
+  } else {
+    manager = SessionManager.continueRecent(cwd);
+  }
+
   const sessionPromise = createAgentSession({
-    sessionManager: SessionManager.continueRecent(cwd),
+    sessionManager: manager,
     cwd,
   }).then(async ({ session, modelFallbackMessage }) => {
     if (modelFallbackMessage) console.log(`  Note: ${modelFallbackMessage}`);
     await session.bindExtensions({ uiContext });
-    console.log(`  Session file     : ${session.sessionFile ?? "(in-memory)"}`);
+    const file = session.sessionFile;
+    console.log(`  Session file     : ${file ?? "(in-memory)"}`);
     console.log("  Agent ready.\n");
+    // Pin this session to its .jsonl file so restarts use open() not continueRecent().
+    if (file) setSessionFile(id, file).catch(() => {/* non-fatal */});
     return session;
   });
 
@@ -72,10 +90,14 @@ function createSessionState(id: string, cwd: string): SessionState {
  * exist, then returns the promise that resolves to the AgentSession.
  * Subsequent calls with the same id always return the same session.
  */
-export function getSession(id: string, cwd: string): Promise<AgentSession> {
+export function getSession(
+  id: string,
+  cwd: string,
+  opts: { fresh?: boolean; sessionFile?: string } = {},
+): Promise<AgentSession> {
   const map = getSessionsMap();
   if (!map.has(id)) {
-    map.set(id, createSessionState(id, cwd));
+    map.set(id, createSessionState(id, cwd, opts));
   }
   return map.get(id)!.sessionPromise;
 }
