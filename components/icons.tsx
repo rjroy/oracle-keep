@@ -78,6 +78,10 @@ export const ChevIcon = createIcon(
   <path d="M9 6l6 6-6 6" />
 );
 
+export const PencilIcon = createIcon(
+  <path d="M11 4a2 2 0 1 1 3 3L7 14l-4 1 1-4 7-7z" />
+);
+
 export function Flourish() {
   return (
     <svg viewBox="0 0 200 14" width={200} height={14} aria-hidden="true">
