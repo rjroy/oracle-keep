@@ -20,7 +20,17 @@ mock.module("@mariozechner/pi-coding-agent", () => ({
     create: createSpy,
     open: openSpy,
   },
+  DefaultResourceLoader: class {
+    constructor() {}
+    async reload() {}
+  },
+  getAgentDir: () => "/mock/agent/dir",
 }));
+
+// No mock.module for oracle-extension — the extension factory is injectable
+// via getSession({ extensionFactory }) for tests that need to control it.
+// Existing tests don't pass one; the DefaultResourceLoader mock above never
+// invokes extensionFactories, so the default createOracleExtension is inert.
 
 import {
   getSession,
@@ -32,6 +42,7 @@ import {
   getEventBufferForSession,
   clearEventBufferForSession,
   getWidgetSnapshotForSession,
+  getSessionMeta,
 } from "../../lib/session";
 import type { BufferedEvent } from "../../lib/session";
 
@@ -280,5 +291,32 @@ describe("BufferedEvent type", () => {
     const [evt] = getEventBufferForSession("type-sess") as BufferedEvent[];
     expect(evt.type).toBe("text");
     expect(evt.data).toEqual({ delta: "x" });
+  });
+});
+
+// ── getSessionMeta ────────────────────────────────────────────────────────────
+
+describe("getSessionMeta", () => {
+  test("returns default empty meta for session not in map", () => {
+    const meta = getSessionMeta("never-created");
+    expect(meta).toEqual({ commands: [] });
+  });
+
+  test("returns meta with empty commands initially after session is created", async () => {
+    await getSession("meta-init", "/path");
+    const meta = getSessionMeta("meta-init");
+    expect(meta.commands).toEqual([]);
+  });
+
+  test("meta for one session does not leak to another", async () => {
+    await getSession("meta-a", "/path/a");
+    await getSession("meta-b", "/path/b");
+    // Directly poke state via the map for isolation testing.
+    const map = globalThis.__oracleKeepSessions!;
+    const stateA = map.get("meta-a")!;
+    Object.assign(stateA.meta, {
+      commands: [{ name: "cmd", description: "", source: "extension" }],
+    });
+    expect(getSessionMeta("meta-b").commands).toHaveLength(0);
   });
 });

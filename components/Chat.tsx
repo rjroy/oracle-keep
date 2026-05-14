@@ -10,6 +10,7 @@ import {
 import { marked } from "marked";
 import { useRouter } from "next/navigation";
 import type { HistoryItem } from "@/types/chat";
+import type { SessionMeta } from "@/types/session";
 import Image from "next/image";
 import {
   MenuIcon,
@@ -812,6 +813,11 @@ export default function Chat({ sessionId }: { sessionId: string }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [statuses, setStatuses] = useState<Map<string, string>>(new Map());
   const [widgets, setWidgets] = useState<Map<string, string[]>>(new Map());
+  const [sessionMeta, setSessionMeta] = useState<SessionMeta>({ commands: [] });
+  // Slash command autocomplete state.
+  const [slashMenu, setSlashMenu] = useState<{ open: boolean; index: number }>(
+    { open: false, index: 0 },
+  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const convoScrollRef = useRef<HTMLDivElement>(null);
@@ -903,6 +909,18 @@ export default function Chat({ sessionId }: { sessionId: string }) {
       .catch(() => {/* widgets stay empty — non-fatal */});
   }, [sessionId]);
 
+  // Fetch session metadata (commands list, etc.) so the autocomplete is ready
+  // as soon as the page loads. The extension populates this on session_start,
+  // so the data is typically available immediately after the first prompt.
+  useEffect(() => {
+    fetch(`/api/s/${sessionId}/meta`)
+      .then((r) => r.json())
+      .then((meta: SessionMeta) => {
+        if (meta?.commands) setSessionMeta(meta);
+      })
+      .catch(() => {/* meta stays at defaults — non-fatal */});
+  }, [sessionId]);
+
   // Track whether the user is pinned to the bottom of the conversation.
   const handleConvoScroll = useCallback(() => {
     const el = convoScrollRef.current;
@@ -924,6 +942,31 @@ export default function Chat({ sessionId }: { sessionId: string }) {
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
   }, []);
+
+  // Derive the filtered command list from the current input and session meta.
+  // Returns entries only while the input starts with "/" and has no space
+  // (once the user adds a space they're typing command arguments, not a name).
+  const slashCandidates = (() => {
+    if (!input.startsWith("/") || input.includes(" ")) return [];
+    const query = input.slice(1).toLowerCase();
+    return sessionMeta.commands.filter(
+      (c) => c.name.toLowerCase().includes(query),
+    );
+  })();
+
+  // Keep the selected index in bounds whenever the candidate list changes.
+  const clampedIndex = Math.min(slashMenu.index, Math.max(0, slashCandidates.length - 1));
+
+  /** Apply the selected slash command: replace input with the full command. */
+  const applySlashCommand = useCallback(
+    (name: string) => {
+      setInput(`/${name} `);
+      setSlashMenu({ open: false, index: 0 });
+      requestAnimationFrame(resizeTextarea);
+      textareaRef.current?.focus();
+    },
+    [resizeTextarea],
+  );
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -986,12 +1029,41 @@ export default function Chat({ sessionId }: { sessionId: string }) {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // Route keyboard events through the slash menu when it's open.
+      if (slashMenu.open && slashCandidates.length > 0) {
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setSlashMenu((s) => ({
+            ...s,
+            index: (clampedIndex - 1 + slashCandidates.length) % slashCandidates.length,
+          }));
+          return;
+        }
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setSlashMenu((s) => ({
+            ...s,
+            index: (clampedIndex + 1) % slashCandidates.length,
+          }));
+          return;
+        }
+        if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+          e.preventDefault();
+          applySlashCommand(slashCandidates[clampedIndex].name);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setSlashMenu({ open: false, index: 0 });
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
       }
     },
-    [sendMessage]
+    [sendMessage, slashMenu.open, slashCandidates, clampedIndex, applySlashCommand],
   );
 
   return (
@@ -1127,6 +1199,29 @@ export default function Chat({ sessionId }: { sessionId: string }) {
             <WidgetPanel widgets={widgets} />
             <StatusBar statuses={statuses} />
             <div className="composer-inner">
+              {/* Slash command autocomplete — floats above the input */}
+              {slashMenu.open && slashCandidates.length > 0 && (
+                <div className="slash-menu" role="listbox" aria-label="Slash commands">
+                  {slashCandidates.map((cmd, i) => (
+                    <button
+                      key={cmd.name}
+                      role="option"
+                      aria-selected={i === clampedIndex}
+                      className={`slash-item${i === clampedIndex ? " is-active" : ""}`}
+                      onMouseDown={(e) => {
+                        // Prevent textarea blur before we can apply the command.
+                        e.preventDefault();
+                        applySlashCommand(cmd.name);
+                      }}
+                    >
+                      <span className="slash-item-name">/{cmd.name}</span>
+                      {cmd.description && (
+                        <span className="slash-item-desc">{cmd.description}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="composer-box">
                 <textarea
                   ref={textareaRef}
@@ -1141,8 +1236,15 @@ export default function Chat({ sessionId }: { sessionId: string }) {
                   disabled={busy}
                   autoFocus
                   onChange={(e) => {
-                    setInput(e.target.value);
+                    const val = e.target.value;
+                    setInput(val);
                     resizeTextarea();
+                    // Open the menu when the input is a bare "/" prefix with no args.
+                    const isSlashing = val.startsWith("/") && !val.includes(" ");
+                    setSlashMenu((s) => ({
+                      open: isSlashing,
+                      index: isSlashing ? s.index : 0,
+                    }));
                   }}
                   onKeyDown={handleKeyDown}
                 />

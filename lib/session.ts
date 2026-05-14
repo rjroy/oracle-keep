@@ -1,5 +1,8 @@
-import { createAgentSession, SessionManager } from "@mariozechner/pi-coding-agent";
+import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager } from "@mariozechner/pi-coding-agent";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import { createOracleExtension } from "./oracle-extension";
+import type { ExtensionFactory } from "./oracle-extension";
+import type { SessionMeta } from "@/types/session";
 import { createWebUIContext, type UIEnqueue, type WebUIContext } from "./ui-context";
 import { setSessionFile } from "./registry";
 
@@ -15,6 +18,8 @@ type SessionState = {
   /** Active SSE subscribers keyed by an arbitrary ID. */
   subscribers: Map<string, UIEnqueue>;
   uiContext: WebUIContext;
+  /** Metadata discovered by the Oracle Keep extension after session_start. */
+  meta: SessionMeta;
 };
 
 // ── HMR-safe sessions map ──────────────────────────────────────────────────────
@@ -35,7 +40,7 @@ function getSessionsMap(): Map<string, SessionState> {
 function createSessionState(
   id: string,
   cwd: string,
-  opts: { fresh?: boolean; sessionFile?: string } = {},
+  opts: { fresh?: boolean; sessionFile?: string; extensionFactory?: ExtensionFactory } = {},
 ): SessionState {
   console.log("\n  Oracle Keep");
   console.log(`  Session          : ${id}`);
@@ -60,10 +65,25 @@ function createSessionState(
     manager = SessionManager.continueRecent(cwd);
   }
 
-  const sessionPromise = createAgentSession({
-    sessionManager: manager,
+  const oracleFactory: ExtensionFactory = opts.extensionFactory ?? createOracleExtension((update) => {
+    const state = getSessionsMap().get(id);
+    if (state) Object.assign(state.meta, update);
+  });
+
+  const loader = new DefaultResourceLoader({
     cwd,
-  }).then(async ({ session, modelFallbackMessage }) => {
+    agentDir: getAgentDir(),
+    extensionFactories: [oracleFactory],
+  });
+  // loader.reload() discovers and validates extensions before session creation.
+  // Awaited inside the promise chain so createSessionState stays synchronous.
+  const sessionPromise = loader.reload().then(() =>
+    createAgentSession({
+      resourceLoader: loader,
+      sessionManager: manager,
+      cwd,
+    })
+  ).then(async ({ session, modelFallbackMessage }) => {
     if (modelFallbackMessage) console.log(`  Note: ${modelFallbackMessage}`);
     await session.bindExtensions({ uiContext });
     const file = session.sessionFile;
@@ -80,6 +100,7 @@ function createSessionState(
     eventBuffer: [],
     subscribers: new Map(),
     uiContext,
+    meta: { commands: [] },
   };
 }
 
@@ -93,7 +114,7 @@ function createSessionState(
 export function getSession(
   id: string,
   cwd: string,
-  opts: { fresh?: boolean; sessionFile?: string } = {},
+  opts: { fresh?: boolean; sessionFile?: string; extensionFactory?: ExtensionFactory } = {},
 ): Promise<AgentSession> {
   const map = getSessionsMap();
   if (!map.has(id)) {
@@ -165,4 +186,12 @@ export function clearEventBufferForSession(id: string): void {
 /** Returns the widget snapshot for a session, or {} if the session is not in the map. */
 export function getWidgetSnapshotForSession(id: string): Record<string, string[]> {
   return getSessionsMap().get(id)?.uiContext.getWidgetSnapshot() ?? {};
+}
+
+/**
+ * Returns the session metadata discovered by the Oracle Keep extension,
+ * or a default empty-state object if the session is not yet in the map.
+ */
+export function getSessionMeta(id: string): SessionMeta {
+  return getSessionsMap().get(id)?.meta ?? { commands: [] };
 }
