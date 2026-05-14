@@ -7,6 +7,7 @@ import {
   useEffect,
   useCallback,
 } from "react";
+import { createPortal } from "react-dom";
 import { marked } from "marked";
 import { useRouter } from "next/navigation";
 import type { HistoryItem } from "@/types/chat";
@@ -823,6 +824,15 @@ export default function Chat({ sessionId }: { sessionId: string }) {
   const convoScrollRef = useRef<HTMLDivElement>(null);
   const isAtBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerInnerRef = useRef<HTMLDivElement>(null);
+
+  // Fixed position for the slash menu portal. Recomputed whenever the menu
+  // opens so it tracks the composer if the window is resized between opens.
+  const [slashMenuPos, setSlashMenuPos] = useState<{
+    bottom: number;
+    left: number;
+    width: number;
+  } | null>(null);
 
   // Streaming state — refs avoid stale closures without triggering re-renders.
   const currentThinkingId = useRef<string | null>(null);
@@ -830,6 +840,18 @@ export default function Chat({ sessionId }: { sessionId: string }) {
   const currentToolGroupId = useRef<string | null>(null);
   const currentToolCallId = useRef<string | null>(null);
   const currentCompactionId = useRef<string | null>(null);
+
+  // Measure the composer-inner position whenever the slash menu opens so the
+  // portal can be placed precisely above it regardless of the overflow chain.
+  useEffect(() => {
+    if (!slashMenu.open || !composerInnerRef.current) return;
+    const rect = composerInnerRef.current.getBoundingClientRect();
+    setSlashMenuPos({
+      bottom: window.innerHeight - rect.top + 6,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, [slashMenu.open]);
 
   // Sync theme to <html> element so CSS variables apply globally.
   const toggleTheme = useCallback(() => {
@@ -1198,30 +1220,45 @@ export default function Chat({ sessionId }: { sessionId: string }) {
           <div className="composer">
             <WidgetPanel widgets={widgets} />
             <StatusBar statuses={statuses} />
-            <div className="composer-inner">
-              {/* Slash command autocomplete — floats above the input */}
-              {slashMenu.open && slashCandidates.length > 0 && (
-                <div className="slash-menu" role="listbox" aria-label="Slash commands">
-                  {slashCandidates.map((cmd, i) => (
-                    <button
-                      key={cmd.name}
-                      role="option"
-                      aria-selected={i === clampedIndex}
-                      className={`slash-item${i === clampedIndex ? " is-active" : ""}`}
-                      onMouseDown={(e) => {
-                        // Prevent textarea blur before we can apply the command.
-                        e.preventDefault();
-                        applySlashCommand(cmd.name);
-                      }}
-                    >
-                      <span className="slash-item-name">/{cmd.name}</span>
-                      {cmd.description && (
-                        <span className="slash-item-desc">{cmd.description}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="composer-inner" ref={composerInnerRef}>
+              {/* Slash menu is rendered via a portal into document.body so it
+                  escapes the ancestor overflow chain entirely. Only mounts
+                  after the first open (slashMenuPos is set) to avoid SSR
+                  issues with document. */}
+              {slashMenu.open && slashCandidates.length > 0 && slashMenuPos !== null &&
+                createPortal(
+                  <div
+                    className="slash-menu"
+                    role="listbox"
+                    aria-label="Slash commands"
+                    style={{
+                      position: "fixed",
+                      bottom: slashMenuPos.bottom,
+                      left: slashMenuPos.left,
+                      width: slashMenuPos.width,
+                    }}
+                  >
+                    {slashCandidates.map((cmd, i) => (
+                      <button
+                        key={cmd.name}
+                        role="option"
+                        aria-selected={i === clampedIndex}
+                        className={`slash-item${i === clampedIndex ? " is-active" : ""}`}
+                        onMouseDown={(e) => {
+                          // Prevent textarea blur before we can apply the command.
+                          e.preventDefault();
+                          applySlashCommand(cmd.name);
+                        }}
+                      >
+                        <span className="slash-item-name">/{cmd.name}</span>
+                        {cmd.description && (
+                          <span className="slash-item-desc">{cmd.description}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>,
+                  document.body,
+                )}
               <div className="composer-box">
                 <textarea
                   ref={textareaRef}
