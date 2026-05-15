@@ -257,6 +257,8 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
               padding: "7px 10px",
               cursor: "pointer",
               textAlign: "center",
+              overflow: "hidden",
+              textWrap: "nowrap",
               transition: "all var(--dur) var(--ease-out)",
             }}
             onMouseEnter={(e) => {
