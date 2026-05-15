@@ -9,18 +9,13 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import type { HistoryItem } from "@/types/chat";
 import type { SessionMeta } from "@/types/session";
 import {
-  MenuIcon,
-  SunIcon,
-  MoonIcon,
   SendIcon,
   LanternIcon,
   Flourish,
 } from "@/components/icons";
-import { useSidebar } from "@/components/sidebar-context";
 
 import { reducer } from "./reducer";
 import { uid, historyToMessages } from "./helpers";
@@ -38,7 +33,6 @@ import WidgetPanel from "./WidgetPanel";
 
 export default function Chat({ sessionId }: { sessionId: string }) {
   const router = useRouter();
-  const { toggle: toggleSidebar } = useSidebar();
   const [messages, dispatch] = useReducer(reducer, []);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -325,49 +319,6 @@ export default function Chat({ sessionId }: { sessionId: string }) {
   return (
     <div className="app">
       <ToastList toasts={toasts} />
-      {/* ── Top bar ── */}
-      <header className="topbar">
-        <div className="tb-left">
-          <button
-            className="icon-btn"
-            onClick={toggleSidebar}
-            aria-label="Toggle sidebar"
-          >
-            <MenuIcon size={18} />
-          </button>
-          <div className="tb-brand">
-            <Image
-              className="tb-shield tb-shield--light"
-              src="/logo-shield-light.png"
-              alt=""
-              width={26}
-              height={26}
-            />
-            <Image
-              className="tb-shield tb-shield--dark"
-              src="/logo-shield-dark.png"
-              alt=""
-              width={26}
-              height={26}
-            />
-            <div className="tb-word">
-              Oracle <span className="em">Keep</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="tb-right">
-          <button
-            className="icon-btn"
-            onClick={toggleTheme}
-            aria-label={theme === "dark" ? "Switch to light" : "Switch to dark"}
-            title={theme === "dark" ? "Light the day" : "Dim the lanterns"}
-          >
-            {theme === "dark" ? <SunIcon size={18} /> : <MoonIcon size={18} />}
-          </button>
-        </div>
-      </header>
-
       {/* ── Stage ── */}
       <main className="stage">
         <div className="convo-wrap">

@@ -15,19 +15,6 @@ export default async function Home() {
           Add a session using the sidebar to get started.
         </p>
       </div>
-      <div className="composer">
-        <div className="composer-inner">
-          <div className="composer-box">
-            <textarea
-              className="composer-input"
-              placeholder="Add a session in the sidebar to get started…"
-              disabled
-              rows={1}
-              style={{ cursor: "not-allowed", opacity: 0.5 }}
-            />
-          </div>
-        </div>
-      </div>
     </main>
   );
 }
