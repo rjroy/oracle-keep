@@ -139,15 +139,6 @@ export default function Sidebar({ sessionId }: { sessionId?: string }) {
 
   return (
     <nav className={`rail${collapsed ? " collapsed" : ""}`} aria-label="Sessions">
-      <div className="rail-toggle-wrap">
-        <button
-          className="icon-btn"
-          onClick={toggle}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          <PanelLeftIcon size={18} />
-        </button>
-      </div>
       {!collapsed && <div className="rail-eyebrow">Sessions</div>}
 
       <div className="rail-scroll">
