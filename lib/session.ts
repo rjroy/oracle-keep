@@ -1,10 +1,12 @@
 import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager } from "@mariozechner/pi-coding-agent";
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import { getModel } from "@mariozechner/pi-ai";
 import { createOracleExtension } from "./oracle-extension";
 import type { ExtensionFactory } from "./oracle-extension";
 import type { SessionMeta } from "@/types/session";
 import { createWebUIContext, type UIEnqueue, type WebUIContext } from "./ui-context";
 import { setSessionFile } from "./registry";
+import { getConfig } from "./session-config";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,26 @@ function getSessionsMap(): Map<string, SessionState> {
 }
 
 // ── Session init ───────────────────────────────────────────────────────────────
+
+/**
+ * Parses a "provider/modelId" string into a Model object.
+ * Returns undefined for empty strings or unrecognised formats so that
+ * createAgentSession falls back to its own default.
+ */
+function resolveModel(modelString: string) {
+  if (!modelString) return undefined;
+  const slash = modelString.indexOf("/");
+  if (slash === -1) return undefined;
+  const provider = modelString.slice(0, slash);
+  const modelId = modelString.slice(slash + 1);
+  try {
+    // getModel throws if the provider/id pair is not known to pi-ai.
+    return getModel(provider as Parameters<typeof getModel>[0], modelId as never);
+  } catch {
+    console.warn(`  Warning: unknown model "${modelString}", letting SDK choose.`);
+    return undefined;
+  }
+}
 
 function createSessionState(
   id: string,
@@ -77,13 +99,16 @@ function createSessionState(
   });
   // loader.reload() discovers and validates extensions before session creation.
   // Awaited inside the promise chain so createSessionState stays synchronous.
-  const sessionPromise = loader.reload().then(() =>
-    createAgentSession({
+  const sessionPromise = loader.reload().then(async () => {
+    const config = await getConfig();
+    const modelOption = resolveModel(config.model);
+    return createAgentSession({
       resourceLoader: loader,
       sessionManager: manager,
       cwd,
-    })
-  ).then(async ({ session, modelFallbackMessage }) => {
+      ...(modelOption && { model: modelOption }),
+    });
+  }).then(async ({ session, modelFallbackMessage }) => {
     if (modelFallbackMessage) console.log(`  Note: ${modelFallbackMessage}`);
     await session.bindExtensions({ uiContext });
     const file = session.sessionFile;
