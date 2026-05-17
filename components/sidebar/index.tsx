@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import type { SessionListItem, SessionRecord } from "@/types/session";
-import { PanelLeftIcon } from "@/components/icons";
 import { useSidebar } from "@/components/sidebar-context";
 import { useSessions } from "./useSessions";
 import CollapsedSessionAvatar from "./CollapsedSessionAvatar";

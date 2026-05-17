@@ -4,7 +4,6 @@ import type { Metadata, Viewport } from "next";
 import Sidebar from "@/components/sidebar";
 import Topbar from "@/components/topbar";
 import { SidebarProvider } from "@/components/sidebar-context";
-import { use, useEffect } from "react";
 
 export const viewport: Viewport = {
   width: "device-width",
