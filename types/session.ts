@@ -17,6 +17,13 @@ export type SessionRegistry = {
 
 export type SessionListItem = SessionRecord & { isProcessing: boolean };
 
+// ── Session config ───────────────────────────────────────────────────────────
+
+export type SessionConfig = {
+  /** Model identifier passed to createAgentSession. Empty string lets the SDK choose. */
+  model: string;
+};
+
 // ── Session metadata (Oracle Keep extension → client) ─────────────────────────
 
 /** A single slash command surfaced from the pi session. */
