@@ -2,7 +2,7 @@
 
 ## What It Is
 
-Oracle Keep is a web chat interface for the pi coding agent. It wraps `createAgentSession` from `@mariozechner/pi-coding-agent` and exposes it as a local browser UI. The agent operates on a configured working directory (`ORACLE_CWD` env var, defaults to `process.cwd()`).
+Oracle Keep is a web chat interface for the pi coding agent. It wraps `createAgentSession` from `@earendil-works/pi-coding-agent` and exposes it as a local browser UI. The agent operates on a configured working directory (`ORACLE_CWD` env var, defaults to `process.cwd()`).
 
 ---
 
@@ -78,8 +78,8 @@ Fixed in the Next.js version: extract text from `partialResult.content`, send as
 
 | Package | Role |
 |---------|------|
-| `@mariozechner/pi-coding-agent` | Pi SDK — session, tools, compaction |
-| `@mariozechner/pi-agent-core` | `AgentMessage` type (not re-exported from main package) |
+| `@earendil-works/pi-coding-agent` | Pi SDK — session, tools, compaction |
+| `@earendil-works/pi-agent-core` | `AgentMessage` type (not re-exported from main package) |
 | `next` 15 | Framework |
 | `react` 19 | UI |
 | `marked` 15 | Markdown rendering in chat bubbles |

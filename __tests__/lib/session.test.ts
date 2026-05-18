@@ -7,11 +7,20 @@ const openSpy = mock((_path: string) => ({}));
 
 // Mock the SDK before any imports that pull in session.ts.
 // Bun hoists mock.module() calls so the mock is in place when session.ts loads.
-mock.module("@mariozechner/pi-coding-agent", () => ({
+// session.ts (post-migration) expects the AgentSession to expose:
+//   - bindExtensions(): wires up extension-registered providers/hooks
+//   - modelRegistry.find(provider, modelId): the only registry that includes
+//     extension-contributed models — populated by bindExtensions
+//   - setModel(model): the call that actually wires the model in
+const setModelSpy = mock(async (_m: unknown) => {});
+const findSpy = mock((_p: string, _m: string): { id: string } | undefined => ({ id: "mock-model" }));
+mock.module("@earendil-works/pi-coding-agent", () => ({
   createAgentSession: async () => ({
     session: {
       bindExtensions: async () => {},
       sessionFile: "test.session",
+      modelRegistry: { find: findSpy },
+      setModel: setModelSpy,
     },
     modelFallbackMessage: null,
   }),
@@ -25,6 +34,14 @@ mock.module("@mariozechner/pi-coding-agent", () => ({
     async reload() {}
   },
   getAgentDir: () => "/mock/agent/dir",
+}));
+
+// session.ts reads config.model via getConfig() to decide whether to call
+// setModel. Default to no configured model so existing tests don't touch
+// model-resolution logic; the dedicated model-wiring tests override this.
+const getConfigSpy = mock(async () => ({ model: "" }));
+mock.module("../../lib/session-config", () => ({
+  getConfig: getConfigSpy,
 }));
 
 // No mock.module for oracle-extension — the extension factory is injectable
@@ -94,6 +111,45 @@ describe("getSession", () => {
     expect(openSpy).toHaveBeenCalledWith("/some/file.jsonl");
     expect(continueRecentSpy).not.toHaveBeenCalled();
     expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  // Migration guard (see pi-agent-migration.md gotchas #2 and #5):
+  // The constructor-time `model:` option does not actually wire the model in.
+  // setModel must be called AFTER bindExtensions, using a model resolved
+  // through session.modelRegistry — not standalone getModel() from pi-ai.
+  test("resolves model via session.modelRegistry and calls setModel", async () => {
+    setModelSpy.mockClear();
+    findSpy.mockClear();
+    getConfigSpy.mockImplementation(async () => ({ model: "openrouter/openrouter/free" }));
+    try {
+      await getSession("sess-with-model", "/path/with-model");
+      expect(findSpy).toHaveBeenCalledWith("openrouter", "openrouter/free");
+      expect(setModelSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      getConfigSpy.mockImplementation(async () => ({ model: "" }));
+    }
+  });
+
+  test("skips setModel when config has no model", async () => {
+    setModelSpy.mockClear();
+    findSpy.mockClear();
+    await getSession("sess-no-model", "/path/no-model");
+    expect(findSpy).not.toHaveBeenCalled();
+    expect(setModelSpy).not.toHaveBeenCalled();
+  });
+
+  test("skips setModel when registry has no match for configured model", async () => {
+    setModelSpy.mockClear();
+    findSpy.mockClear();
+    findSpy.mockImplementationOnce(() => undefined);
+    getConfigSpy.mockImplementation(async () => ({ model: "ghost/none" }));
+    try {
+      await getSession("sess-bad-model", "/path/bad-model");
+      expect(findSpy).toHaveBeenCalledWith("ghost", "none");
+      expect(setModelSpy).not.toHaveBeenCalled();
+    } finally {
+      getConfigSpy.mockImplementation(async () => ({ model: "" }));
+    }
   });
 });
 

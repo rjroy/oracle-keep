@@ -1,6 +1,5 @@
-import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager } from "@mariozechner/pi-coding-agent";
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
-import { getModel } from "@mariozechner/pi-ai";
+import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager } from "@earendil-works/pi-coding-agent";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { createOracleExtension } from "./oracle-extension";
 import type { ExtensionFactory } from "./oracle-extension";
 import type { SessionMeta } from "@/types/session";
@@ -40,23 +39,21 @@ function getSessionsMap(): Map<string, SessionState> {
 // ── Session init ───────────────────────────────────────────────────────────────
 
 /**
- * Parses a "provider/modelId" string into a Model object.
- * Returns undefined for empty strings or unrecognised formats so that
- * createAgentSession falls back to its own default.
+ * Splits a "provider/modelId" config string into its parts. Returns null for
+ * empty or malformed strings so the caller falls back to the SDK default.
+ *
+ * Resolution itself happens via session.modelRegistry after bindExtensions —
+ * the standalone pi-ai getModel() only sees built-in providers and would miss
+ * anything an extension registers dynamically.
  */
-function resolveModel(modelString: string) {
-  if (!modelString) return undefined;
+function parseModelString(modelString: string): { provider: string; modelId: string } | null {
+  if (!modelString) return null;
   const slash = modelString.indexOf("/");
-  if (slash === -1) return undefined;
-  const provider = modelString.slice(0, slash);
-  const modelId = modelString.slice(slash + 1);
-  try {
-    // getModel throws if the provider/id pair is not known to pi-ai.
-    return getModel(provider as Parameters<typeof getModel>[0], modelId as never);
-  } catch {
-    console.warn(`  Warning: unknown model "${modelString}", letting SDK choose.`);
-    return undefined;
-  }
+  if (slash === -1) return null;
+  return {
+    provider: modelString.slice(0, slash),
+    modelId: modelString.slice(slash + 1),
+  };
 }
 
 function createSessionState(
@@ -99,25 +96,45 @@ function createSessionState(
   });
   // loader.reload() discovers and validates extensions before session creation.
   // Awaited inside the promise chain so createSessionState stays synchronous.
-  const sessionPromise = loader.reload().then(async () => {
-    const config = await getConfig();
-    const modelOption = resolveModel(config.model);
-    return createAgentSession({
+  //
+  // Order matters and is load-bearing (see pi-agent-migration.md):
+  //   1. loader.reload()         — discover extensions
+  //   2. createAgentSession()    — model deliberately omitted; the constructor-
+  //                                time `model:` option does not wire the model
+  //                                into the session.
+  //   3. session.bindExtensions  — runs queued registerProvider() calls so
+  //                                extension-contributed models become visible
+  //                                on session.modelRegistry.
+  //   4. session.setModel()      — the only call that actually wires the model
+  //                                in and validates its auth.
+  const sessionPromise = loader.reload()
+    .then(() => createAgentSession({
       resourceLoader: loader,
       sessionManager: manager,
       cwd,
-      ...(modelOption && { model: modelOption }),
+    }))
+    .then(async ({ session, modelFallbackMessage }) => {
+      if (modelFallbackMessage) console.log(`  Note: ${modelFallbackMessage}`);
+      await session.bindExtensions({ uiContext });
+
+      const config = await getConfig();
+      const parsed = parseModelString(config.model);
+      if (parsed) {
+        const model = session.modelRegistry.find(parsed.provider, parsed.modelId);
+        if (model) {
+          await session.setModel(model);
+        } else {
+          console.warn(`  Warning: model "${config.model}" not found in registry, using session default.`);
+        }
+      }
+
+      const file = session.sessionFile;
+      console.log(`  Session file     : ${file ?? "(in-memory)"}`);
+      console.log("  Agent ready.\n");
+      // Pin this session to its .jsonl file so restarts use open() not continueRecent().
+      if (file) setSessionFile(id, file).catch(() => {/* non-fatal */});
+      return session;
     });
-  }).then(async ({ session, modelFallbackMessage }) => {
-    if (modelFallbackMessage) console.log(`  Note: ${modelFallbackMessage}`);
-    await session.bindExtensions({ uiContext });
-    const file = session.sessionFile;
-    console.log(`  Session file     : ${file ?? "(in-memory)"}`);
-    console.log("  Agent ready.\n");
-    // Pin this session to its .jsonl file so restarts use open() not continueRecent().
-    if (file) setSessionFile(id, file).catch(() => {/* non-fatal */});
-    return session;
-  });
 
   return {
     sessionPromise,

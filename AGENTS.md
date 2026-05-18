@@ -51,7 +51,7 @@ __tests__/    Unit tests (bun test)
 - Runner: `bun test`
 - Test files live in `__tests__/` and mirror the `lib/` directory structure
 - Tests use `bun:test` — import from `"bun:test"`, not from `vitest` or `jest`
-- `@mariozechner/pi-coding-agent` must be mocked in any test that imports `lib/session.ts` — see `__tests__/lib/session.test.ts` for the pattern
+- `@earendil-works/pi-coding-agent` must be mocked in any test that imports `lib/session.ts` — see `__tests__/lib/session.test.ts` for the pattern
 - The API routes (`app/api/`) require Next.js infrastructure and are not covered by unit tests; they need integration tests if added
 
 ## TypeScript Setup

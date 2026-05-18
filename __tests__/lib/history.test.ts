@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { buildHistory } from "../../lib/history";
 
 // ── Fixture helpers ────────────────────────────────────────────────────────────
