@@ -11,7 +11,7 @@
  * TUI-only methods (setEditorComponent, custom, setFooter, etc.) are no-ops.
  */
 
-import type { ExtensionUIContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 
 // Pushed over SSE by the web UI context.
 export type UIEnqueue = (type: string, data?: Record<string, unknown>) => void;

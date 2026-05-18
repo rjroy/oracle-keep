@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p __tests__/tsconfig.json"
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "latest",
+    "@earendil-works/pi-agent-core": "latest",
+    "@earendil-works/pi-coding-agent": "latest",
     "marked": "^15.0.0",
     "next": "^15.0.0",
     "react": "^19.0.0",

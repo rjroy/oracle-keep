@@ -55,7 +55,7 @@ __tests__/       Unit tests (bun:test)
 
 ### No SDK Imports in types/
 
-Files in `types/` must NOT import from `@mariozechner/pi-coding-agent`. This keeps the types module safe for both client and server rendering. If you need SDK types, import in `lib/` or `lib/session.ts` instead.
+Files in `types/` must NOT import from `@earendil-works/pi-coding-agent`. This keeps the types module safe for both client and server rendering. If you need SDK types, import in `lib/` or `lib/session.ts` instead.
 
 ### Example Type Usage
 
@@ -102,8 +102,8 @@ export interface HistoryItem {
 You have access to the following Pi SDK modules:
 
 ```typescript
-import { createAgentSession } from "@mariozechner/pi-coding-agent";
-import type { AgentMessage } from "@mariozechner/pi-agent-core"; // not re-exported
+import { createAgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core"; // not re-exported
 
 // Session singleton (for HMR safety)
 globalThis.__oracleKeep ??= createAgentSession({

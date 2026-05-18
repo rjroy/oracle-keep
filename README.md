@@ -2,7 +2,7 @@
 
 > A web chat interface for the Pi coding agent
 
-Oracle Keep is a local browser-based chat interface that wraps `createAgentSession` from [`@mariozechner/pi-coding-agent`](https://github.com/mario-zechner/pi-coding-agent). It provides a conversational UI for interacting with the Pi coding agent directly from your terminal's working directory.
+Oracle Keep is a local browser-based chat interface that wraps `createAgentSession` from [`@earendil-works/pi-coding-agent`](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). It provides a conversational UI for interacting with the Pi coding agent directly from your terminal's working directory.
 
 ## Features
 
@@ -173,7 +173,7 @@ npm run lint
 
 - Test files live in `__tests__/lib/`, mirroring the `lib/` structure
 - Tests use `bun:test` instead of vitest/jest
-- Mock `@mariozechner/pi-coding-agent` in any test importing `lib/session.ts`
+- Mock `@earendil-works/pi-coding-agent` in any test importing `lib/session.ts`
 - API routes require integration tests; not covered by unit tests
 
 ## Environment Variables
@@ -198,8 +198,8 @@ Oracle Keep runs in any modern browser supporting:
 
 ## Related Projects
 
-- [`@mariozechner/pi-coding-agent`](https://github.com/mario-zechner/pi-coding-agent) - The Pi SDK this integrates with
-- [`@mariozechner/pi-coding-agent/examples`](https://github.com/mario-zechner/pi-coding-agent/tree/main/examples) - Example extensions
+- [`@earendil-works/pi-coding-agent`](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) - The Pi SDK this integrates with
+- [`@earendil-works/pi`](https://github.com/earendil-works/pi) - The Pi monorepo (agent core, AI layer, TUI)
 
 ## License
 
