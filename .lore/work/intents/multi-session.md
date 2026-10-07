@@ -5,6 +5,7 @@ status: draft
 tags: [sessions, routing, sidebar, persistence]
 modules: [session, chat, routing, sidebar]
 req-prefix: MULTI
+legacy_source_type: spec
 ---
 
 # Spec: Multi-Session Chat

@@ -43,3 +43,10 @@ yarn-error.log*
 
 # Vercel (not deployed here, but guard against accidents)
 .vercel
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+/.lore/local/
