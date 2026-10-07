@@ -1,9 +1,9 @@
 ---
 title: Multi-session chat
 date: 2026-05-13
-status: draft
-tags: [sessions, routing, sidebar, persistence]
-modules: [session, chat, routing, sidebar]
+status: completed
+tags: [ sessions, routing, sidebar, persistence ]
+modules: [ session, chat, routing, sidebar ]
 req-prefix: MULTI
 legacy_source_type: spec
 ---
