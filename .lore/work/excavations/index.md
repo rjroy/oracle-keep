@@ -1,3 +1,6 @@
+---
+status: completed
+---
 # Distillation Index
 
 ## Distilled Areas
